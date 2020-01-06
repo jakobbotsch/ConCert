@@ -5,6 +5,7 @@
 -R theories ConCert.Execution
 theories/Automation.v
 theories/Blockchain.v
+theories/BlockchainMonads.v
 theories/BoundedN.v
 theories/ChainedList.v
 theories/Circulation.v
