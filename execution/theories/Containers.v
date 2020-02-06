@@ -30,6 +30,9 @@ Module FMap.
   Notation alter := stdpp.base.alter.
   Notation partial_alter := stdpp.base.partial_alter.
 
+  Definition keys {K V : Type} `{countable.Countable K} (m : FMap K V) : list K :=
+    map fst (elements m).
+
   Definition values {K V : Type} `{countable.Countable K} (m : FMap K V) : list V :=
     map snd (elements m).
 

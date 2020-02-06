@@ -46,6 +46,8 @@ Definition run_contract_initer
            (chain : Chain) (ctx : ContractCallContext) (setup : Setup) : option T :=
   let '(_, _, _, result) := m chain ctx setup in result.
 
+Global Arguments run_contract_initer {_ _} _ /.
+
 Global Instance contract_initer_monad (Setup : Type) : Monad (ContractIniter Setup) :=
   {| ret _ x chain ctx setup := (chain, ctx, setup, Some x);
      bind _ _ prev f chain ctx setup :=
@@ -98,6 +100,8 @@ Definition run_contract_receiver
            : option (T * list ActionBody) :=
   let '(_, _, _, _, acts, result) := m chain ctx state msg [] in
   option_map (fun result => (result, acts)) result.
+
+Global Arguments run_contract_receiver {_ _ _} _ /.
 
 Global Instance contract_receiver_laws
        (State Msg : Type) : MonadLaws (contract_receiver_monad State State).

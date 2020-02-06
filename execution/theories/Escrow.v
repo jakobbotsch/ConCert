@@ -351,6 +351,8 @@ Section Theories.
         destruct_match eqn:amount_mod_2 in amount_even; try congruence; auto.
         destruct (Z.compare_spec (ctx_amount ctx mod 2) 0); auto; try congruence.
       }
+      From Coq Require Import PreOmega.Z.
+      PreOmega.Z.to_euclidean_division_equations.
       rewrite <- (Z_div_exact_2 (ctx_amount ctx) 2) by (auto; lia).
       split; auto.
       instantiate (DeployFacts := fun _ ctx => ctx_amount ctx >= 0);
