@@ -13,6 +13,7 @@ Notation FMap := gmap.gmap.
 
 Module FMap.
   Generalizable All Variables.
+
   Notation empty := stdpp.base.empty.
   Notation add := stdpp.base.insert.
   Notation find := stdpp.base.lookup.
@@ -112,6 +113,30 @@ Module FMap.
       find k m = Some v ->
       add k v m = m.
     Proof. apply fin_maps.insert_id. Qed.
+
+    Lemma keys_already k v v' (m : FMap K V) :
+      find k m = Some v ->
+      Permutation (keys (add k v' m)) (keys m).
+    Proof.
+      revert k.
+      induction m using fin_maps.map_ind; intros k find_some.
+      + rewrite find_empty in find_some.
+        congruence.
+      + destruct (stdpp.base.decide (k = i)) as [->|].
+        * rewrite fin_maps.insert_insert.
+          unfold keys.
+          rewrite 2!fin_maps.map_to_list_insert by auto.
+          cbn.
+          reflexivity.
+        * rewrite find_add_ne in find_some by auto.
+          specialize (IHm _ find_some).
+          rewrite add_commute by auto.
+          unfold keys.
+          rewrite elements_add by (now rewrite find_add_ne by auto).
+          setoid_rewrite elements_add at 2; auto.
+          cbn.
+          now rewrite IHm.
+    Qed.
   End Theories.
 End FMap.
 

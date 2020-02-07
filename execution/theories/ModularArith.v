@@ -1,4 +1,5 @@
 From Bignums Require Import BigZ.
+From Coq Require Import List.
 From Coq Require Import Morphisms.
 From Coq Require Import Program.
 From Coq Require Import PArith.
@@ -6,6 +7,9 @@ From Coq Require Import Psatz.
 From Coq Require Import ZArith.
 From Coq Require Import Znumtheory.
 From Coq Require Import Zwf.
+
+Definition mod_prod (l : list Z) (m : Z) : Z :=
+  fold_right (fun e r => e * r mod m) 1 l.
 
 Local Open Scope bigZ.
 Fixpoint mod_pow_aux (a : bigZ) (x : positive) (m : bigZ) (r : bigZ) : bigZ :=
