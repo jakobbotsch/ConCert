@@ -27,6 +27,7 @@ Context `(H : Z -> Z).
 Context (modulus : Z).
 Context (generator : Z).
 Context (modulus_prime : prime modulus).
+Context (is_generator : IsGenerator generator modulus).
 
 Class VoteProofScheme :=
   build_vote_proof_scheme {
@@ -248,15 +249,6 @@ Definition IndexAssumptions (voters : FMap Address VoterInfo) index : Prop :=
     FMap.find addr voters = Some inf ->
     voter_index inf = index addr.
 
-Lemma bruteforce_tally_correct n p :
-  p = Some
-  bruteforce_tally n p =
-
-  bruteforce : bruteforce_tally (FMap.size (registered_voters prev_state))
-                 (fold_right (fun e r : Z => ((e * r) mod modulus)%Z) 1%Z
-                    (map public_vote (FMap.values (registered_voters prev_state)))) =
-               Some n
-
 Lemma voter_info_update (voters : FMap Address VoterInfo) index addr vi_before vi_after :
   IndexAssumptions (FMap.add addr vi_after voters) index ->
   FMap.find addr voters = Some vi_before ->
@@ -274,6 +266,39 @@ Proof.
   - apply index_assum.
     rewrite FMap.find_add_ne by auto; congruence.
 Qed.
+
+Lemma bruteforce_tally_correct {A} (l : list A) (sks : A -> Z) (svs : A -> bool) (pvs : list Z) :
+  let pks := map (fun a => compute_public_key (sks a)) l in
+  pvs = map (fun '(i, a) => compute_public_vote (reconstructed_key pks i) (sks a) (svs a))
+            (zip (seq 0 (length l)) l) ->
+  mod_prod pvs modulus = mod_pow generator (sumZ (fun a => if svs a then 1 else 0) l) modulus.
+Proof.
+  pose proof (prime_ge_2 _ modulus_prime).
+  destruct is_generator.
+
+  rewrite mod_pow_spec.
+  intros pks ->.
+  induction l as [|x xs IH]; cbn -[mod_prod].
+  - rewrite Z.pow_0_r.
+    now rewrite (Z.mod_1_l modulus ltac:(lia)).
+  - destruct (svs x).
+    + rewrite Z.pow_add_r; try lia; cycle 1.
+      { clear. induction xs; cbn; try lia.
+        destruct (svs a); lia. }
+      rewrite Z.pow_1_r.
+      rewrite <- (Zmult_mod_idemp_r _ generator).
+      rewrite <- IH.
+      unfold compute_public_vote, reconstructed_key.
+
+    unfold Z.of_nat.
+    unfold Pos.of_succ_nat.
+
+  unfold reconstructed_key.
+
+  bruteforce : bruteforce_tally (FMap.size (registered_voters prev_state))
+                 (fold_right (fun e r : Z => ((e * r) mod modulus)%Z) 1%Z
+                    (map public_vote (FMap.values (registered_voters prev_state)))) =
+               Some n
 
 Local Open Scope nat.
 Theorem boardroom_voting_correct

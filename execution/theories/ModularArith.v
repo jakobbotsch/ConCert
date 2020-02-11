@@ -347,3 +347,7 @@ Proof.
   auto with zarith.
   now apply Z.mod_1_l.
 Qed.
+
+Definition IsGenerator n modulus : Prop :=
+  mod_pow n modulus modulus = 1 /\
+  forall n', 0 < n' < modulus -> mod_pow n n' modulus <> 1.
