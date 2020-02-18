@@ -119,27 +119,6 @@ Proof.
   now rewrite IH.
 Qed.
 
-Definition ExtEq {A B} (f g : A -> B) : Prop :=
-  forall a, f a = g a.
-
-Global Instance ExtEq_equiv {A B} : Equivalence (@ExtEq A B).
-Proof.
-  constructor.
-  - constructor.
-  - intros f g fgeq a.
-    rewrite fgeq; auto.
-  - intros f g h fgeq gheq a.
-    now rewrite fgeq, gheq.
-Qed.
-
-Global Instance sumZ_exteq_proper {A} : Proper ((@ExtEq A Z) ==> eq ==> eq) sumZ.
-Proof.
-  intros f g fgeq l ? <-.
-  induction l as [|x xs IH]; auto.
-  cbn.
-  now rewrite IH, fgeq.
-Qed.
-
 Lemma sumZ_mul (f : Z -> Z) (l : list Z) (z : Z) :
   z * sumZ f l = sumZ (fun z' => z * f z') l.
 Proof.
@@ -458,9 +437,161 @@ Proof.
   cbn.
   apply f_equal.
   rewrite (IH 1), (IH (S n)).
-  apply sumZ_exteq_proper; auto.
-  repeat intro.
-  apply f_equal; lia.
+  clear.
+  induction (seq 0 len); auto.
+  cbn.
+  rewrite IHl.
+  now replace (a + 1 + n) with (a + S n) by lia.
+Qed.
+
+Lemma sumZ_zero {A} (l : list A) :
+  sumZ (fun _ => 0%Z) l = 0%Z.
+Proof. induction l; auto. Qed.
+
+Lemma sumZ_seq_feq (f g : nat -> Z) len :
+  (forall i, i < len -> f i = g i)%nat ->
+  sumZ g (seq 0 len) = sumZ f (seq 0 len).
+Proof.
+  revert f g.
+  induction len as [|len IH]; intros f g all_same; auto.
+  cbn.
+  rewrite 2!(sumZ_seq_n _ 1).
+  rewrite (all_same 0%nat ltac:(lia)).
+  apply f_equal.
+  apply IH.
+  intros i lt.
+  now specialize (all_same (i + 1)%nat ltac:(lia)).
+Qed.
+
+Lemma sumZ_firstn {A} default (f : A -> Z) n l :
+  (n <= length l \/ f default = 0%Z) ->
+  sumZ f (firstn n l) =
+  sumZ (fun i => f (nth i l default)) (seq 0 n).
+Proof.
+  revert l.
+  induction n as [|n IH]; intros l le; auto.
+  cbn.
+  rewrite sumZ_seq_n.
+  destruct l; cbn in *.
+  - destruct le; [lia|].
+    rewrite H.
+    clear -H.
+    rewrite (sumZ_seq_feq (fun i : nat => 0%Z)).
+    + now rewrite sumZ_zero.
+    + intros i ?; destruct (i + 1); now rewrite H.
+  - apply f_equal.
+    rewrite IH by lia.
+    apply sumZ_seq_feq.
+    intros i.
+    intros lt.
+    destruct (i + 1) eqn:i1; [lia|].
+    now replace n0 with i by lia.
+Qed.
+
+Lemma sumZ_skipn {A} default (f : A -> Z) n l :
+  sumZ f (skipn n l) =
+  sumZ (fun i => f (nth (n + i) l default)) (seq 0 (length l - n)).
+Proof.
+  revert l.
+  induction n as [|n IH]; intros l; cbn.
+  - rewrite Nat.sub_0_r.
+    rewrite <- (sumZ_firstn default).
+    + now rewrite firstn_all.
+    + left; lia.
+  - destruct l; auto.
+    cbn.
+    apply IH.
+Qed.
+
+Local Open Scope Z.
+Lemma sumZ_sub {A} (f g : A -> Z) l :
+  sumZ f l - sumZ g l =
+  sumZ (fun a => f a - g a) l.
+Proof.
+  induction l; auto; cbn; lia.
+Qed.
+
+Lemma rev_seq start len :
+  rev (seq start len) =
+  map (fun i => 2*start + len - i - 1)%nat (seq start len).
+Proof.
+  assert (forall l l',
+             length l = length l' ->
+             (forall i,
+                 i < length l -> nth i l 0%nat = nth i l' 0)%nat ->
+             l = l').
+  {
+    clear.
+    intros l l' length_eq all_same.
+    revert l' length_eq all_same.
+    induction l as [|x xs IH]; intros l' length_eq all_same.
+    - destruct l'; cbn in *; congruence.
+    - destruct l'; cbn in *; try congruence.
+      specialize (IH l' ltac:(auto)).
+      pose proof (all_same 0%nat ltac:(lia)) as rew1.
+      cbn in rew1.
+      subst; apply f_equal.
+      apply IH.
+      intros i lt.
+      specialize (all_same (S i) ltac:(lia)).
+      cbn in all_same.
+      auto.
+  }
+
+  apply H; [now rewrite rev_length, map_length|].
+  clear H.
+  intros i lt.
+  rewrite rev_nth; cycle 1.
+  { now rewrite <- rev_length. }
+
+  (* get 0%nat on the form f d where f is the func we map with *)
+  set (f i := (2 * start + len - i - 1)%nat).
+  replace 0%nat with (f (2 * start + len - 1)%nat) at -1 by (cbn; lia).
+  subst f.
+  rewrite map_nth.
+  cbn.
+  rewrite rev_length, seq_length in *.
+  rewrite !seq_nth by lia.
+  lia.
+Qed.
+
+Lemma sumZ_seq_rev (f : nat -> Z) start len :
+  sumZ f (seq start len) =
+  sumZ (fun i => f (2*start + len - i - 1)%nat) (seq start len).
+Proof.
+  rewrite (Permutation_rev (seq start len)).
+  rewrite rev_seq at 1.
+  rewrite sumZ_map.
+  now rewrite <- Permutation_rev.
+Qed.
+
+Lemma sumZ_seq_split split_len (f : nat -> Z) start len :
+  (split_len <= len)%nat ->
+  sumZ f (seq start len) =
+  sumZ f (seq start split_len) + sumZ f (seq (start + split_len) (len - split_len)).
+Proof.
+  rewrite <- sumZ_app.
+  rewrite <- seq_app.
+  intros le.
+  now replace (split_len + (len - split_len))%nat with len by lia.
+Qed.
+
+Lemma sumZ_sumZ_seq_swap (f : nat -> nat -> Z) start1 len1 start2 len2 :
+  sumZ (fun i => sumZ (f i) (seq start2 len2)) (seq start1 len1) =
+  sumZ (fun j => sumZ (fun i => f i j) (seq start1 len1)) (seq start2 len2).
+Proof.
+  revert start1 start2 len2.
+  induction len1 as [|len1 IH].
+  - intros start1 start2 len2.
+    cbn.
+    now rewrite sumZ_zero.
+  - intros start1 start2 len2.
+    cbn.
+    rewrite IH.
+    induction len2 as [|len2 IH2]; auto.
+    rewrite !sumZ_seq_S.
+    rewrite <- IH2.
+    lia.
 Qed.
 
 Definition large_modulus : Z :=

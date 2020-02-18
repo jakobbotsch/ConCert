@@ -154,8 +154,7 @@ Section WithFField.
     end.
 
   Lemma units_prod (xs : list A) :
-    All (fun x => x !== 0) xs ->
-    ff_prod xs !== 0.
+    All (fun x => x !== 0) xs -> ff_prod xs !== 0.
   Proof.
     intros units.
     induction xs as [|x xs IH]; cbn in *.
@@ -328,6 +327,7 @@ Section WithFField.
                   end = z.
   Proof. now destruct z. Qed.
 
+  (*
   Lemma sumZ_firstn_whole (f : Z -> Z) n (l : list Z) :
     sumZ f (firstn n l) =
     sumZ (fun i => if Nat.ltb i (length l) then f (nth i l 0%Z) else 0%Z) (seq 0 n).
@@ -515,7 +515,7 @@ Section WithFField.
     induction i as [|x xs IH].
     - rewrite firstn_nil. auto.
     - cbn
-
+*)
   Local Open Scope Z.
   Lemma sum_lemma l :
     sumZ (fun i => nth i l 0 *
@@ -523,28 +523,55 @@ Section WithFField.
                     sumZ id (skipn (S i) l)))
          (seq 0 (length l)) = 0.
   Proof.
-    assert (forall i < length l, nth i l 0 * (sumZ id (firstn i l) - sumZ
-    replace (sumZ (fun i => nth i l 0 *
-                            (sumZ id (firstn i l) -
-                             sumZ id (skipn (S i) l)))
-                  (seq 0 (length l)))
-      with (sumZ (fun i => nth i l 0 *
-                           (sumZ (fun j => if Nat.ltb j i
-                                           then nth j l 0
-                                           else if Nat.eqb j i then 0
-                                                else - nth j l 0)
-                                 (seq 0 (length l))))
-                 (seq 0 (length l))); cycle 1.
+    rewrite (sumZ_seq_feq
+               (fun i => sumZ (fun j => if Nat.ltb j i then nth i l 0 * nth j l 0 else 0)
+                              (seq 0 (length l)) -
+                         sumZ (fun j => if Nat.ltb i j then nth i l 0 * nth j l 0 else 0)
+                              (seq 0 (length l))));
+      cycle 1.
     {
-      induction l as [|z zs IH]; auto.
-      cbn -[Nat.ltb Nat.eqb].
-      rewrite Nat.ltb_irrefl, Nat.eqb_refl.
-      replace (0 <? 0)%nat with false; cycle 1.
-      { Search (?a <? ?a)%nat.
+      intros i ?.
+      rewrite Z.mul_sub_distr_l.
+      rewrite 2!sumZ_mul.
+      unfold id.
+      rewrite (sumZ_firstn 0) by (right; lia).
+      rewrite (sumZ_skipn 0).
+      apply f_equal2.
+      - rewrite (sumZ_seq_split i) by lia.
+        rewrite Z.add_comm.
+        cbn -[Nat.ltb].
+        rewrite sumZ_seq_n.
+        rewrite (sumZ_seq_feq (fun _ => 0)); cycle 1.
+        { intros j jlt. destruct (Nat.ltb_spec (j + i) i); auto; lia. }
+        rewrite sumZ_zero.
+        cbn -[Nat.ltb].
+        apply sumZ_seq_feq.
+        intros j jlt.
+        destruct (Nat.ltb_spec j i); lia.
+      - rewrite (sumZ_seq_split (S i)) by lia.
+        rewrite (sumZ_seq_feq (fun _ => 0)); cycle 1.
+        { intros j jlt. destruct (Nat.ltb_spec i j); auto; lia. }
+        rewrite sumZ_zero.
+        cbn.
+        rewrite sumZ_seq_n.
+        replace (length l - S i)%nat with (length l - i - 1)%nat by lia.
+        apply sumZ_seq_feq.
+        intros j jlt.
+        replace (j + S i)%nat with (S (i + j))%nat by lia.
+        destruct (Nat.leb_spec i (i + j)); lia.
+    }
 
-    setoid_rewrite <- Z.add_opp_r.
-    rewrite <- sumZ_app.
-
+    rewrite <- sumZ_sub.
+    rewrite sumZ_sumZ_seq_swap.
+    match goal with
+    | [|- ?a - ?b = 0] => enough (a = b) by lia
+    end.
+    apply sumZ_seq_feq.
+    intros i ilt.
+    apply sumZ_seq_feq.
+    intros j jlt.
+    destruct (i <? j)%nat; lia.
+  Qed.
 
   Lemma mul_votes (sks : list Z) :
     ff_prod (map (fun '(sk, rk) => pow rk sk)
