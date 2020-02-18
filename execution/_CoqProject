@@ -5,6 +5,7 @@
 -R theories ConCert.Execution
 theories/Automation.v
 theories/Blockchain.v
+theories/BoardroomMath.v
 theories/BoardroomVoting.v
 theories/BoundedN.v
 theories/ChainedList.v
@@ -18,6 +19,5 @@ theories/Extras.v
 theories/Finite.v
 theories/LocalBlockchain.v
 theories/LocalBlockchainTests.v
-theories/ModularArith.v
 theories/Monads.v
 theories/Serializable.v

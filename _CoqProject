@@ -5,6 +5,7 @@ vendor/record-update/RecordUpdate.v
 -R execution/theories ConCert.Execution
 execution/theories/Automation.v
 execution/theories/Blockchain.v
+execution/theories/BoardroomMath.v
 execution/theories/BoardroomVoting.v
 execution/theories/BoundedN.v
 execution/theories/ChainedList.v
@@ -18,7 +19,6 @@ execution/theories/Extras.v
 execution/theories/Finite.v
 execution/theories/LocalBlockchain.v
 execution/theories/LocalBlockchainTests.v
-execution/theories/ModularArith.v
 execution/theories/Monads.v
 execution/theories/Serializable.v
 

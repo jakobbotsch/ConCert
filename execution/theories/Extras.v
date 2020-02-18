@@ -119,6 +119,39 @@ Proof.
   now rewrite IH.
 Qed.
 
+Definition ExtEq {A B} (f g : A -> B) : Prop :=
+  forall a, f a = g a.
+
+Global Instance ExtEq_equiv {A B} : Equivalence (@ExtEq A B).
+Proof.
+  constructor.
+  - constructor.
+  - intros f g fgeq a.
+    rewrite fgeq; auto.
+  - intros f g h fgeq gheq a.
+    now rewrite fgeq, gheq.
+Qed.
+
+Global Instance sumZ_exteq_proper {A} : Proper ((@ExtEq A Z) ==> eq ==> eq) sumZ.
+Proof.
+  intros f g fgeq l ? <-.
+  induction l as [|x xs IH]; auto.
+  cbn.
+  now rewrite IH, fgeq.
+Qed.
+
+Lemma sumZ_mul (f : Z -> Z) (l : list Z) (z : Z) :
+  z * sumZ f l = sumZ (fun z' => z * f z') l.
+Proof.
+  induction l; auto; cbn in *; lia.
+Qed.
+
+Fixpoint prodZ {A : Type} (f : A -> Z) (l : list A) : Z :=
+  match l with
+  | [] => 1
+  | x :: xs => f x * prodZ f xs
+  end.
+
 Lemma in_app_cons_or {A : Type} (x y : A) (xs ys : list A) :
   x <> y ->
   In x (xs ++ y :: ys) ->
@@ -352,6 +385,82 @@ Proof.
   cbn in *.
   destruct l3; inversion H.
   apply f_equal; auto.
+Qed.
+
+Lemma existsb_forallb {A} f (l : list A) :
+  existsb f l = negb (forallb (fun x => negb (f x)) l).
+Proof.
+  induction l as [|x xs IH]; auto.
+  cbn.
+  now rewrite IH, Bool.negb_andb, Bool.negb_involutive.
+Qed.
+
+Lemma forallb_existsb {A} f (l : list A) :
+  forallb f l = negb (existsb (fun x => negb (f x)) l).
+Proof.
+  induction l as [|x xs IH]; auto.
+  cbn.
+  now rewrite IH, Bool.negb_orb, Bool.negb_involutive.
+Qed.
+
+Fixpoint All {A} (f : A -> Prop) (l : list A) : Prop :=
+  match l with
+  | [] => True
+  | x :: xs => f x /\ All f xs
+  end.
+
+Lemma All_cons {A} (f : A -> Prop) (x : A) (xs : list A) :
+  f x ->
+  All f xs ->
+  All f (x :: xs).
+Proof. cbn; auto. Qed.
+
+Lemma All_map_endo {A} (f : A -> Prop) (xs : list A) (g : A -> A) :
+  All f xs ->
+  (forall x, f x -> f (g x)) ->
+  All f (map g xs).
+Proof.
+  induction xs; auto.
+  cbn.
+  intros [].
+  auto.
+Qed.
+
+Lemma All_map {A} {B} (f : A -> Prop) (xs : list A) (g : B -> Prop) (h : A -> B) :
+  All f xs ->
+  (forall x, f x -> g (h x)) ->
+  All g (map h xs).
+Proof.
+  induction xs; auto.
+  cbn.
+  intros []; auto.
+Qed.
+
+Local Open Scope nat.
+Lemma skipn_none {B} n (l : list B) :
+  length l <= n -> skipn n l = [].
+Proof.
+  revert l.
+  induction n as [|n IH]; intros l le.
+  - cbn in *.
+    destruct l; cbn in *; auto; lia.
+  - destruct l; cbn in *; auto.
+    apply IH.
+    lia.
+Qed.
+
+Lemma sumZ_seq_n (f : nat -> Z) n len :
+  sumZ f (seq n len) =
+  sumZ (fun i => f (i + n)) (seq 0 len).
+Proof.
+  revert n f.
+  induction len as [|len IH]; intros n f; auto.
+  cbn.
+  apply f_equal.
+  rewrite (IH 1), (IH (S n)).
+  apply sumZ_exteq_proper; auto.
+  repeat intro.
+  apply f_equal; lia.
 Qed.
 
 Definition large_modulus : Z :=

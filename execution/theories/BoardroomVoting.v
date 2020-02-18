@@ -13,7 +13,7 @@ Require Import Containers.
 From stdpp Require countable.
 Require ContractMonads.
 Require Import Extras.
-Require Import ModularArith.
+Require Import BoardroomMath.
 Require Import Monads.
 Require Import Serializable.
 
@@ -27,7 +27,9 @@ Context `(H : Z -> Z).
 Context (modulus : Z).
 Context (generator : Z).
 Context (modulus_prime : prime modulus).
-Context (is_generator : IsGenerator generator modulus).
+Context (is_generator :
+           0 < generator < modulus /\
+           forall n, 0 < n < modulus -> mod_pow generator n modulus <> 1).
 
 Class VoteProofScheme :=
   build_vote_proof_scheme {
@@ -203,17 +205,6 @@ Next Obligation with cbn -[Nat.leb].
     destruct (_ (FMap.size _)); auto.
 Qed.
 
-Definition reconstructed_key (pks : list Z) (n : nat) : Z :=
-  let lprod := mod_prod (firstn n pks) modulus in
-  let rprod := mod_inv (mod_prod (skipn (S n) pks) modulus) modulus in
-  (lprod * rprod) mod modulus.
-
-Definition compute_public_key (sk : Z) : Z :=
-  mod_pow generator sk modulus.
-
-Definition compute_public_vote (rk sk : Z) (sv : bool) : Z :=
-  (mod_pow rk sk modulus * if sv then generator else 1) mod modulus.
-
 Definition make_signup_msg (sk : Z) : Msg :=
   signup (compute_public_key sk).
 
@@ -225,6 +216,15 @@ Definition make_vote_msg (pks : list Z) (my_index : nat) (sk : Z) (sv : bool) : 
               (make_vote_proof pks my_index sk sv).
 
 Section Theories.
+
+Lemma bruteforce_tally_correct n p :
+  p = Some
+  bruteforce_tally n p =
+
+  bruteforce : bruteforce_tally (FMap.size (registered_voters prev_state))
+                 (fold_right (fun e r : Z => ((e * r) mod modulus)%Z) 1%Z
+                    (map public_vote (FMap.values (registered_voters prev_state)))) =
+               Some n
 
 Fixpoint CallAssumptions
          (pks : list Z)
