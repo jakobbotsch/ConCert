@@ -594,6 +594,105 @@ Proof.
     lia.
 Qed.
 
+Lemma All_Forall {A} (l : list A) f :
+  All f l <-> Forall f l.
+Proof.
+  induction l.
+  - split; cbn; auto.
+  - split; cbn.
+    + intros [fa all].
+      constructor; tauto.
+    + intros all.
+      inversion all; tauto.
+Qed.
+
+Lemma all_incl {A} (l l' : list A) f :
+  incl l l' -> All f l' -> All f l.
+Proof.
+  intros incl all.
+  apply All_Forall.
+  apply All_Forall in all.
+  apply Forall_forall.
+  pose proof (Forall_forall f l').
+  firstorder.
+Qed.
+
+Lemma firstn_incl {A} n (l : list A) : incl (firstn n l) l.
+Proof.
+  unfold incl.
+  intros a.
+  revert l.
+  induction n as [|n IH]; intros l isin; try contradiction.
+  cbn in *.
+  destruct l; try contradiction.
+  cbn in *.
+  destruct isin; try tauto.
+  right.
+  auto.
+Qed.
+
+Lemma skipn_incl {A} n (l : list A) : incl (skipn n l) l.
+Proof.
+  unfold incl.
+  intros a.
+  revert l.
+  induction n as [|n IH]; intros l isin; auto.
+  cbn in *.
+  destruct l; try contradiction.
+  cbn in *.
+  right; auto.
+Qed.
+
+Lemma sumZ_seq_feq_rel (f g : nat -> Z) len (R : Z -> Z -> Prop) :
+  Reflexive R ->
+  Proper (R ==> R ==> R) Z.add ->
+  (forall i, i < len -> R (f i) (g i))%nat ->
+  R (sumZ f (seq 0 len)) (sumZ g (seq 0 len)).
+Proof.
+  intros refl proper all_same.
+  revert f g all_same.
+  induction len as [|len IH]; intros f g all_same; auto.
+  cbn.
+  rewrite 2!(sumZ_seq_n _ 1).
+  apply proper.
+  - apply all_same; lia.
+  - apply IH.
+    intros i ilt.
+    now specialize (all_same (i + 1)%nat ltac:(lia)).
+Qed.
+
+Lemma sumZ_plus {A} (f g : A -> Z) l :
+  sumZ (fun a => f a + g a) l = sumZ f l + sumZ g l.
+Proof.
+  induction l; auto; cbn in *; lia.
+Qed.
+
+Lemma sumZ_map_id {A} (f : A -> Z) l :
+  sumZ f l = sumZ id (map f l).
+Proof.
+  induction l; cbn; auto.
+  unfold id.
+  now rewrite IHl.
+Qed.
+
+Lemma firstn_map {A B} (f : A -> B) n l :
+  firstn n (map f l) = map f (firstn n l).
+Proof.
+  revert l.
+  induction n; intros l; cbn; auto.
+  destruct l; cbn; auto.
+  apply f_equal.
+  auto.
+Qed.
+
+Lemma skipn_map {A B} (f : A -> B) n l :
+  skipn n (map f l) = map f (skipn n l).
+Proof.
+  revert l.
+  induction n; intros l; cbn; auto.
+  destruct l; cbn; auto.
+Qed.
+
 Definition large_modulus : Z :=
 32317006071311007300338913926423828248817941241140239112842009751400741706634354222619689417363569347117901737909704191754605873209195028853758986185622153212175412514901774520270235796078236248884246189477587641105928646099411723245426622522193230540919037680524235519125679715870117001058055877651038861847280257976054903569732561526167081339361799541336476559160368317896729073178384589680639671900977202194168647225871031411336429319536193471636533209717077448227988588565369208645296636077250268955505928362751121174096972998068410554359584866583291642136218231078990999448652468262416972035911852507045361090559.
 

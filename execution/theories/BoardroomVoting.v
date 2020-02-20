@@ -25,11 +25,10 @@ Context `{Base : ChainBase}.
 Context `(H : Z -> Z).
 (*Context (verify_vote (vote : Z) (rk : Z) (jj*)
 Context (modulus : Z).
-Context (generator : Z).
 Context (modulus_prime : prime modulus).
-Context (is_generator :
-           0 < generator < modulus /\
-           forall n, 0 < n < modulus -> mod_pow generator n modulus <> 1).
+
+Instance zp : FField Z := Zp_ffield _ modulus_prime.
+Context {generator : Generator zp}.
 
 Class VoteProofScheme :=
   build_vote_proof_scheme {
@@ -113,15 +112,6 @@ Definition init : ContractIniter Setup State :=
        setup := setup;
        result := None; |}.
 
-Fixpoint bruteforce_tally (n : nat) (product : Z) : option nat :=
-  if mod_pow generator (Z.of_nat n) modulus =? product then
-    Some n
-  else
-    match n with
-    | 0 => None
-    | S n => bruteforce_tally n product
-    end%nat.
-
 Definition receive : ContractReceiver State Msg State :=
   do state <- my_state;
   do caller <- lift caller_addr;
@@ -166,9 +156,7 @@ Definition receive : ContractReceiver State Msg State :=
     let voters := FMap.values (registered_voters state) in
     do lift (if existsb (fun vi => public_vote vi =? 0) voters then None else Some tt);
     let votes := map public_vote voters in
-    let product := mod_prod votes modulus in
-    let max_vote := FMap.size (registered_voters state) in
-    do res <- lift (bruteforce_tally max_vote product);
+    do res <- lift (bruteforce_tally (Zpeq_dec modulus) votes);
     accept_call (state<|result := Some res|>)
   end.
 
@@ -202,7 +190,7 @@ Next Obligation with cbn -[Nat.leb].
     destruct (_ <? _)%nat; auto.
     destruct (result _); auto.
     destruct (existsb _ _); auto.
-    destruct (_ (FMap.size _)); auto.
+    destruct (bruteforce_tally _ _); auto.
 Qed.
 
 Definition make_signup_msg (sk : Z) : Msg :=
@@ -217,6 +205,7 @@ Definition make_vote_msg (pks : list Z) (my_index : nat) (sk : Z) (sv : bool) : 
 
 Section Theories.
 
+  (*
 Lemma bruteforce_tally_correct n p :
   p = Some
   bruteforce_tally n p =
@@ -225,6 +214,7 @@ Lemma bruteforce_tally_correct n p :
                  (fold_right (fun e r : Z => ((e * r) mod modulus)%Z) 1%Z
                     (map public_vote (FMap.values (registered_voters prev_state)))) =
                Some n
+*)
 
 Fixpoint CallAssumptions
          (pks : list Z)
@@ -267,6 +257,7 @@ Proof.
     rewrite FMap.find_add_ne by auto; congruence.
 Qed.
 
+(*
 Lemma bruteforce_tally_correct {A} (l : list A) (sks : A -> Z) (svs : A -> bool) (pvs : list Z) :
   let pks := map (fun a => compute_public_key (sks a)) l in
   pvs = map (fun '(i, a) => compute_public_vote (reconstructed_key pks i) (sks a) (svs a))
@@ -299,7 +290,9 @@ Proof.
                  (fold_right (fun e r : Z => ((e * r) mod modulus)%Z) 1%Z
                     (map public_vote (FMap.values (registered_voters prev_state)))) =
                Some n
+*)
 
+Opaque zp.
 Local Open Scope nat.
 Theorem boardroom_voting_correct
         bstate caddr (trace : ChainTrace empty_state bstate)
@@ -465,6 +458,7 @@ Proof.
       destruct IH as [_ [_ IH]].
       specialize (IH call_assum pks_assum index_assum).
       destruct IH as [IH _].
+
       assert (IH':
       split; [tauto|].
       destruct IH as [_ [_ IH]].

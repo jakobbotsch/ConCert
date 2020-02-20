@@ -5,6 +5,9 @@ From Coq Require Import Psatz.
 From Coq Require Import SetoidTactics.
 From Coq Require Import Field.
 From Coq Require Import ZArith.
+From Coq Require Import Znumtheory.
+From Coqprime Require Import Zp FGroup EGroup Cyclic.
+From Bignums Require Import BigZ.
 
 Require Import Extras.
 Import ListNotations.
@@ -14,6 +17,7 @@ Local Open Scope Z.
 Class FField {A : Type} :=
   build_ffield {
     elmeq : A -> A -> Prop;
+    elmeq_dec x y : {elmeq x y} + {~(elmeq x y)};
     zero : A;
     one : A;
 
@@ -23,6 +27,7 @@ Class FField {A : Type} :=
     opp : A -> A;
     inv : A -> A;
     pow : A -> Z -> A;
+
 
     order : Z;
     expeq e e' := e mod (order - 1) = e' mod (order - 1);
@@ -55,16 +60,29 @@ Class FField {A : Type} :=
       ~(elmeq b zero) ->
       inv (mul a b) = mul (inv a) (inv b);
 
-    add_mul a b c : elmeq (mul (add a b) c) (add (mul a c) (mul b c));
+    mul_add a b c : elmeq (mul (add a b) c) (add (mul a c) (mul b c));
 
-    int_domain a b :
+    pow_0_r a :
       ~(elmeq a zero) ->
-      ~(elmeq b zero) ->
-      ~(elmeq (mul a b) zero);
+      elmeq (pow a 0) one;
 
-    pow_0_r a e :
+    pow_1_r a : elmeq (pow a 1) a;
+
+    pow_opp a e : elmeq (pow a (-e)) (inv (pow a e));
+
+    pow_plus a e e' :
+      elmeq (pow a (e + e')) (mul (pow a e) (pow a e'));
+
+    pow_nonzero a e :
       ~(elmeq a zero) ->
       ~(elmeq (pow a e) zero);
+
+    pow_mul a b e :
+      pow (mul a b) e = mul (pow a e) (pow b e);
+
+    inv_nonzero a :
+      ~(elmeq a zero) ->
+      ~(elmeq (inv a) zero);
   }.
 
 Arguments FField : clear implicits.
@@ -106,7 +124,7 @@ Proof.
   - apply mul_1_l.
   - apply mul_comm.
   - apply mul_assoc.
-  - apply add_mul.
+  - apply mul_add.
   - reflexivity.
   - intros x. rewrite add_comm. apply opp_inv_l.
   - apply one_neq_zero.
@@ -121,18 +139,23 @@ Class Generator {A : Type} (field : FField A) :=
   }.
 
 Class DiscreteLog {A : Type} (field : FField A) (g : Generator field) :=
-  build_discrete_log {
+  build_log {
     (* This is computationally intractable, but we still elmequire it
     for ease of specification *)
-    discrete_log : A -> Z;
-    discrete_log_proper :> Proper (elmeq ==> expeq) discrete_log;
-    inv_discrete_log a :
+    log : A -> Z;
+    log_proper :> Proper (elmeq ==> expeq) log;
+    pow_log a :
       a !== 0 ->
-      generator ^ (discrete_log a) == a;
-    discrete_log_mul a b :
+      generator ^ (log a) == a;
+
+    log_1_l : log 1 exp= 0%Z;
+    log_mul a b :
       a !== 0 ->
       b !== 0 ->
-      discrete_log (a * b) exp= discrete_log a + discrete_log b
+      log (a * b) exp= log a + log b;
+
+    log_inv a : log (inv a) exp= -log a;
+    log_generator : log generator = 1%Z;
   }.
 
 Section WithFField.
@@ -145,30 +168,182 @@ Section WithFField.
 
   Local Open Scope ffield.
 
+  Hint Resolve one_neq_zero pow_nonzero generator_nonzero inv_nonzero : core.
+
   Instance dr : DefaultRelation elmeq.
 
-  Fixpoint ff_prod (l : list A) : A :=
+  Fixpoint prod (l : list A) : A :=
     match l with
     | [] => one
-    | x :: xs => x * ff_prod xs
+    | x :: xs => x * prod xs
     end.
 
-  Lemma units_prod (xs : list A) :
-    All (fun x => x !== 0) xs -> ff_prod xs !== 0.
+  Instance plus_expeq_proper : Proper (expeq ==> expeq ==> expeq) Z.add.
   Proof.
-    intros units.
-    induction xs as [|x xs IH]; cbn in *.
-    - apply one_neq_zero.
-    - apply int_domain; intuition.
+    intros x x' xeq y y' yeq.
+    unfold "exp=" in *.
+    assert (order - 1 <> 0)%Z by (pose proof order_ge_2; lia).
+    now rewrite Z.add_mod, xeq, yeq, <- Z.add_mod.
   Qed.
-  Hint Resolve units_prod : core.
+
+  Instance mul_expeq_proper : Proper (expeq ==> expeq ==> expeq) Z.mul.
+  Proof.
+    intros x x' xeq y y' yeq.
+    unfold "exp=" in *.
+    assert (order - 1 <> 0)%Z by (pose proof order_ge_2; lia).
+    now rewrite Z.mul_mod, xeq, yeq, <- Z.mul_mod.
+  Qed.
+
+  Instance sub_expeq_proper : Proper (expeq ==> expeq ==> expeq) Z.sub.
+  Proof.
+    intros x x' xeq y y' yeq.
+    unfold "exp=" in *.
+    assert (order - 1 <> 0)%Z by (pose proof order_ge_2; lia).
+    now rewrite Zminus_mod, xeq, yeq, <- Zminus_mod.
+  Qed.
+
+  Instance opp_expeq_proper : Proper (expeq ==> expeq) Z.opp.
+  Proof.
+    intros x x' xeq.
+    rewrite <- !Z.sub_0_l.
+    now rewrite xeq.
+  Qed.
+
+  Lemma log_pow a e :
+    a !== 0 ->
+    log (a ^ e) exp= e * log a.
+  Proof.
+    intros anz.
+    induction e using Z.peano_ind.
+    - rewrite pow_0_r; auto.
+      apply log_1_l.
+    - replace (Z.succ e) with (e + 1)%Z by lia.
+      rewrite pow_plus.
+      rewrite log_mul; auto.
+      rewrite IHe.
+      replace ((e + 1) * log a)%Z with (e * log a + log a)%Z by lia.
+      now rewrite pow_1_r.
+    - replace (Z.pred e) with (e + (-1))%Z by lia.
+      rewrite pow_plus.
+      rewrite log_mul; auto.
+      rewrite IHe.
+      rewrite (pow_opp a 1).
+      rewrite pow_1_r.
+      rewrite log_inv.
+      now replace ((e + -1) * log a)%Z with (e * log a + - log a)%Z by lia.
+  Qed.
+
+  Lemma mul_both_l a b c :
+    c !== 0 ->
+    c * a == c * b ->
+    a == b.
+  Proof.
+    intros cnz prod.
+    rewrite <- (mul_1_l a), <- (mul_1_l b).
+    rewrite <- (inv_inv_l c) by auto.
+    now rewrite <- mul_assoc, prod, mul_assoc.
+  Qed.
+
+  Lemma log_both a b :
+    a !== 0 ->
+    b !== 0 ->
+    log a exp= log b ->
+    a == b.
+  Proof.
+    intros an0 bn0 dleq.
+    assert (generator ^ log a == generator ^ log a) as H by reflexivity.
+    rewrite dleq in H at 1.
+    now rewrite !pow_log in H by auto.
+  Qed.
+
+  Lemma log_pow_generator e :
+    log (generator ^ e) exp= e.
+  Proof.
+    rewrite log_pow; auto.
+    rewrite log_generator.
+    now rewrite Z.mul_1_r.
+  Qed.
+
+  Lemma pow_both a b :
+    generator ^ a == generator ^ b ->
+    a exp= b.
+  Proof.
+    intros geq.
+    assert (log (generator ^ a) exp= log (generator ^ a)) by reflexivity.
+    rewrite geq in H at 1.
+    now rewrite !log_pow_generator in H.
+  Qed.
+
+  Lemma int_domain a b :
+    a !== 0 ->
+    b !== 0 ->
+    a * b !== 0.
+  Proof.
+    intros an0 bn0.
+    apply (@field_is_integral_domain
+             A
+             0 1
+             add
+             mul
+             (fun a b => a + (opp b))
+             opp
+             (fun a b => a * (inv b))
+             inv); eauto.
+    - typeclasses eauto.
+    - constructor; typeclasses eauto.
+    - apply F2AF.
+      + typeclasses eauto.
+      + constructor; typeclasses eauto.
+      + apply (FField_field_theory field).
+  Qed.
+
+  Hint Resolve int_domain : core.
+
+  Lemma mul_mul_zero a b :
+    a * b == 0 -> a == 0 \/ b == 0.
+  Proof.
+    intros ab0.
+    destruct (elmeq_dec a 0) as [?|a0]; auto.
+    destruct (elmeq_dec b 0) as [?|b0]; auto.
+    pose proof (int_domain _ _ a0 b0).
+    contradiction.
+  Qed.
+
+  Hint Resolve mul_mul_zero : core.
+
+  Lemma int_domain_full a b :
+    a * b == 0 <-> a == 0 \/ b == 0.
+  Proof.
+    split; auto.
+    intros [->| ->]; field.
+  Qed.
+
+  Lemma prod_units (xs : list A) :
+    All (fun x => x !== 0) xs <-> prod xs !== 0.
+  Proof.
+    induction xs as [|x xs IH]; cbn in *; auto.
+    - split; auto.
+    - split.
+      + intros.
+        apply int_domain; intuition.
+      + intros xprod.
+        split.
+        * intros eq; rewrite eq in *; rewrite mul_0_l in xprod.
+          destruct (xprod ltac:(reflexivity)).
+        * apply IH.
+          intros eq; rewrite eq in *; rewrite mul_comm, mul_0_l in xprod.
+          destruct (xprod ltac:(reflexivity)).
+  Qed.
+
+  Hint Resolve -> prod_units : core.
+  Hint Resolve <- prod_units : core.
 
   Definition compute_public_key (sk : Z) : A :=
     generator ^ sk.
 
   Definition reconstructed_key (pks : list A) (n : nat) : A :=
-    let lprod := ff_prod (firstn n pks) in
-    let rprod := inv (ff_prod (skipn (S n) pks)) in
+    let lprod := prod (firstn n pks) in
+    let rprod := inv (prod (skipn (S n) pks)) in
     lprod * rprod.
 
   Fixpoint reconstructed_keys_aux
@@ -182,14 +357,34 @@ Section WithFField.
     end.
 
   Definition reconstructed_keys (pks : list A) : list A :=
-    let rprod := inv (ff_prod pks) in
+    let rprod := inv (prod pks) in
     reconstructed_keys_aux pks one rprod.
+
+  Definition compute_public_vote (rk : A) (sk : Z) (sv : bool) : A :=
+    rk ^ sk * if sv then generator else 1.
+
+  Fixpoint bruteforce_tally_aux
+           (aeq : forall a a', {a == a'} + {a !== a'})
+           (n : nat)
+           (votes_product : A) : option nat :=
+    if aeq (generator ^ (Z.of_nat n)) votes_product then
+      Some n
+    else
+      match n with
+      | 0 => None
+      | S n => bruteforce_tally_aux aeq n votes_product
+      end%nat.
+
+  Definition bruteforce_tally
+           (aeq : forall a a', {a == a'} + {a !== a'})
+           (votes : list A) : option nat :=
+    bruteforce_tally_aux aeq (length votes) (prod votes).
 
   Definition elmseq (l l' : list A) : Prop :=
     Forall2 elmeq l l'.
 
-  Instance units_prod_proper :
-    Proper (elmseq ==> elmeq) ff_prod.
+  Instance prod_units_proper :
+    Proper (elmseq ==> elmeq) prod.
   Proof.
     intros l l' leq.
     induction leq as [|x x' xs x's xeq xseq IH]; cbn in *.
@@ -279,8 +474,8 @@ Section WithFField.
     reconstructed_key (pks1 ++ pk :: pks2) (length pks1) ==
     hd zero (reconstructed_keys_aux
                 (pk :: pks2)
-                (ff_prod pks1)
-                (inv (ff_prod (pk :: pks2)))).
+                (prod pks1)
+                (inv (prod (pk :: pks2)))).
   Proof.
     intros unit units.
     unfold reconstructed_key.
@@ -292,17 +487,12 @@ Section WithFField.
     { clear; induction pks1; auto. }
 
     field.
-    pose proof (units_prod _ units).
-    intuition.
+    auto.
   Qed.
 
   Lemma compute_public_key_unit sk :
     compute_public_key sk !== 0.
-  Proof.
-    cbn.
-    apply pow_0_r.
-    apply generator_nonzero.
-  Qed.
+  Proof. apply pow_nonzero, generator_nonzero. Qed.
   Hint Resolve compute_public_key_unit : core.
 
   Lemma compute_public_keys_units sks :
@@ -312,14 +502,191 @@ Section WithFField.
   Qed.
   Hint Resolve compute_public_keys_units : core.
 
-  Instance plus_expeq_proper : Proper (expeq ==> expeq ==> expeq) Z.add.
+  Lemma reconstructed_key_unit pks i :
+    All (fun a => a !== 0) pks ->
+    reconstructed_key pks i !== 0.
   Proof.
-    intros x x' xeq y y' yeq.
-    unfold "exp=" in *.
-    assert (order - 1 <> 0)%Z by (pose proof order_ge_2; lia).
-    now rewrite Z.add_mod, xeq, yeq, <- Z.add_mod.
+    intros all.
+    unfold reconstructed_key.
+    apply int_domain.
+    - apply prod_units.
+      apply (all_incl (firstn i pks) pks); auto.
+      apply firstn_incl.
+    - apply inv_nonzero.
+      apply prod_units.
+      apply (all_incl (skipn (S i) pks) pks); auto.
+      apply skipn_incl.
   Qed.
 
+  Lemma compute_public_vote_unit rk sk sv :
+    rk !== 0 ->
+    compute_public_vote rk sk sv !== 0.
+  Proof.
+    intros rk_unit.
+    unfold compute_public_vote.
+    destruct sv; auto.
+  Qed.
+
+  Hint Resolve
+       compute_public_key_unit compute_public_keys_units
+       reconstructed_key_unit compute_public_vote_unit : core.
+
+  Lemma log_prod (l : list A) :
+    All (fun a => a !== 0) l ->
+    log (prod l) exp= sumZ log l.
+  Proof.
+    intros all.
+    induction l as [|x xs IH]; cbn in *.
+    - now rewrite log_1_l.
+    - specialize (IH (proj2 all)).
+      destruct all.
+      rewrite log_mul by auto.
+      now rewrite IH.
+  Qed.
+
+  Lemma prod_firstn_units n l :
+    prod l !== 0 ->
+    prod (firstn n l) !== 0.
+  Proof.
+    intros prodl.
+    apply prod_units.
+    pose proof (firstn_incl n l).
+    apply all_incl with l; auto.
+  Qed.
+
+  Hint Resolve prod_firstn_units : core.
+
+  Lemma prod_skipn_units n l :
+    prod l !== 0 ->
+    prod (skipn n l) !== 0.
+  Proof.
+    intros prodl.
+    apply prod_units.
+    pose proof (skipn_incl n l).
+    apply all_incl with l; auto.
+  Qed.
+
+  Hint Resolve prod_skipn_units : core.
+
+  Local Open Scope Z.
+  Lemma sum_lemma l :
+    sumZ (fun i => nth i l 0 *
+                   (sumZ id (firstn i l) -
+                    sumZ id (skipn (S i) l)))
+         (seq 0 (length l)) = 0.
+  Proof.
+    rewrite (sumZ_seq_feq
+               (fun i => sumZ (fun j => if Nat.ltb j i then nth i l 0 * nth j l 0 else 0)
+                              (seq 0 (length l)) -
+                         sumZ (fun j => if Nat.ltb i j then nth i l 0 * nth j l 0 else 0)
+                              (seq 0 (length l))));
+      cycle 1.
+    {
+      intros i ?.
+      rewrite Z.mul_sub_distr_l.
+      rewrite 2!sumZ_mul.
+      unfold id.
+      rewrite (sumZ_firstn 0) by (right; lia).
+      rewrite (sumZ_skipn 0).
+      apply f_equal2.
+      - rewrite (sumZ_seq_split i) by lia.
+        rewrite Z.add_comm.
+        cbn -[Nat.ltb].
+        rewrite sumZ_seq_n.
+        rewrite (sumZ_seq_feq (fun _ => 0)); cycle 1.
+        { intros j jlt. destruct (Nat.ltb_spec (j + i) i); auto; lia. }
+        rewrite sumZ_zero.
+        cbn -[Nat.ltb].
+        apply sumZ_seq_feq.
+        intros j jlt.
+        destruct (Nat.ltb_spec j i); lia.
+      - rewrite (sumZ_seq_split (S i)) by lia.
+        rewrite (sumZ_seq_feq (fun _ => 0)); cycle 1.
+        { intros j jlt. destruct (Nat.ltb_spec i j); auto; lia. }
+        rewrite sumZ_zero.
+        cbn.
+        rewrite sumZ_seq_n.
+        replace (length l - S i)%nat with (length l - i - 1)%nat by lia.
+        apply sumZ_seq_feq.
+        intros j jlt.
+        replace (j + S i)%nat with (S (i + j))%nat by lia.
+        destruct (Nat.leb_spec i (i + j)); lia.
+    }
+
+    rewrite <- sumZ_sub.
+    rewrite sumZ_sumZ_seq_swap.
+    match goal with
+    | [|- ?a - ?b = 0] => enough (a = b) by lia
+    end.
+    apply sumZ_seq_feq.
+    intros i ilt.
+    apply sumZ_seq_feq.
+    intros j jlt.
+    destruct (i <? j)%nat; lia.
+  Qed.
+
+  Local Open Scope ffield.
+  Lemma mul_public_votes
+        (sks : list Z)
+        (votes : nat -> bool) :
+    prod (map (fun (i : nat) =>
+                 compute_public_vote
+                   (reconstructed_key (map compute_public_key sks) i)
+                   (nth i sks 0%Z)
+                   (votes i))
+                 (seq 0 (length sks)))
+    == generator ^ sumZ (fun i => if votes i then 1 else 0)%Z (seq 0 (length sks)).
+  Proof.
+    apply log_both; auto.
+    - induction (seq 0 (length sks)); cbn; auto.
+    - rewrite log_pow_generator, log_prod; cycle 1.
+      {
+        induction (seq 0 (length sks)); cbn; auto.
+      }
+
+      rewrite sumZ_map.
+      unfold compute_public_vote.
+      etransitivity.
+      {
+        apply sumZ_seq_feq_rel; try typeclasses eauto.
+        intros i ilt.
+        rewrite log_mul at 1 by (destruct (votes i); auto).
+        setoid_replace (log (if votes i then generator else 1))
+          with (if votes i then 1%Z else 0%Z) at 1;
+          cycle 1.
+        - destruct (votes i).
+          + rewrite <- (pow_1_r generator).
+            apply log_pow_generator.
+          + apply log_1_l.
+        - rewrite log_pow at 1 by auto.
+          unfold reconstructed_key.
+          rewrite log_mul at 1 by auto.
+          rewrite log_prod at 1 by auto.
+          rewrite log_inv at 1.
+          rewrite log_prod at 1 by auto.
+          rewrite 2!(sumZ_map_id log) at 1.
+          rewrite firstn_map, skipn_map, !map_map.
+          unfold compute_public_key.
+          assert (forall l, sumZ id (map (fun x => log (generator ^ x)) l) exp= sumZ id l).
+          { clear.
+            intros l.
+            induction l; cbn; auto.
+            - reflexivity.
+            - unfold id at 1 3.
+              rewrite log_pow_generator.
+              now rewrite IHl.
+          }
+          rewrite 2!H at 1.
+          rewrite Z.add_opp_r.
+          reflexivity.
+      }
+
+      rewrite sumZ_plus.
+      rewrite sum_lemma.
+      reflexivity.
+  Qed.
+
+  (*
   Lemma Z_eta z : match z with
                   | Z0 => Z0
                   | Zpos p => Zpos p
@@ -517,92 +884,40 @@ Section WithFField.
     - cbn
 *)
   Local Open Scope Z.
-  Lemma sum_lemma l :
-    sumZ (fun i => nth i l 0 *
-                   (sumZ id (firstn i l) -
-                    sumZ id (skipn (S i) l)))
-         (seq 0 (length l)) = 0.
-  Proof.
-    rewrite (sumZ_seq_feq
-               (fun i => sumZ (fun j => if Nat.ltb j i then nth i l 0 * nth j l 0 else 0)
-                              (seq 0 (length l)) -
-                         sumZ (fun j => if Nat.ltb i j then nth i l 0 * nth j l 0 else 0)
-                              (seq 0 (length l))));
-      cycle 1.
-    {
-      intros i ?.
-      rewrite Z.mul_sub_distr_l.
-      rewrite 2!sumZ_mul.
-      unfold id.
-      rewrite (sumZ_firstn 0) by (right; lia).
-      rewrite (sumZ_skipn 0).
-      apply f_equal2.
-      - rewrite (sumZ_seq_split i) by lia.
-        rewrite Z.add_comm.
-        cbn -[Nat.ltb].
-        rewrite sumZ_seq_n.
-        rewrite (sumZ_seq_feq (fun _ => 0)); cycle 1.
-        { intros j jlt. destruct (Nat.ltb_spec (j + i) i); auto; lia. }
-        rewrite sumZ_zero.
-        cbn -[Nat.ltb].
-        apply sumZ_seq_feq.
-        intros j jlt.
-        destruct (Nat.ltb_spec j i); lia.
-      - rewrite (sumZ_seq_split (S i)) by lia.
-        rewrite (sumZ_seq_feq (fun _ => 0)); cycle 1.
-        { intros j jlt. destruct (Nat.ltb_spec i j); auto; lia. }
-        rewrite sumZ_zero.
-        cbn.
-        rewrite sumZ_seq_n.
-        replace (length l - S i)%nat with (length l - i - 1)%nat by lia.
-        apply sumZ_seq_feq.
-        intros j jlt.
-        replace (j + S i)%nat with (S (i + j))%nat by lia.
-        destruct (Nat.leb_spec i (i + j)); lia.
-    }
 
-    rewrite <- sumZ_sub.
-    rewrite sumZ_sumZ_seq_swap.
-    match goal with
-    | [|- ?a - ?b = 0] => enough (a = b) by lia
-    end.
-    apply sumZ_seq_feq.
-    intros i ilt.
-    apply sumZ_seq_feq.
-    intros j jlt.
-    destruct (i <? j)%nat; lia.
-  Qed.
-
+  (*
+  Local Open Scope ffield.
   Lemma mul_votes (sks : list Z) :
-    ff_prod (map (fun '(sk, rk) => pow rk sk)
+    prod (map (fun '(sk, rk) => pow rk sk)
                  (zip sks (reconstructed_keys (map compute_public_key sks))))
     == 1.
   Proof.
 
+
   Lemma sum_pks (sks : list Z) :
-    sumZ (fun '(sk, rk) => sk * discrete_log rk)%Z
+    sumZ (fun '(sk, rk) => sk * log rk)%Z
          (zip sks (reconstructed_keys (map compute_public_key sks))) exp= 0%Z.
   Proof.
     induction sks as [|sk sks IH]; cbn in *.
     1: reflexivity.
     setoid_replace
       (1 * (inv (compute_public_key sk *
-                 ff_prod (map compute_public_key sks)) *
+                 prod (map compute_public_key sks)) *
             compute_public_key sk))
-      with (inv (ff_prod (map compute_public_key sks)))
+      with (inv (prod (map compute_public_key sks)))
       by (field; auto).
 
 
     replace (1 * pk) with pk by field.
-    replace (inv (pk * ff_prod pks) * pk) with (inv (ff_prod pks)); cycle 1.
+    replace (inv (pk * prod pks) * pk) with (inv (prod pks)); cycle 1.
     { field. intuition. }
-    replace (1 * (inv (ff_prod pks))) with (inv (ff_prod pks)); cycle 1.
+    replace (1 * (inv (prod pks))) with (inv (prod pks)); cycle 1.
     { field. intuition. }
 
     destruct units as [unit units].
-    rewrite <- discrete_log_mul; auto.
+    rewrite <- log_mul; auto.
     rewrite <- Z.add_mod_idemp_l by lia.
-    rewrite <- (discrete_log_mul pk); auto.
+    rewrite <- (log_mul pk); auto.
     set (blah := match mod_inv _ _ * _ with _ => _ end).
 
   Lemma rks_alt sks n :
@@ -623,7 +938,7 @@ Section WithFField.
 
   Lemma sum_pks pks :
     All IsUnit pks ->
-    sumZ (fun '(pk, rk) => discrete_log pk + discrete_log rk)
+    sumZ (fun '(pk, rk) => log pk + log rk)
          (zip pks (reconstructed_keys pks)) mod modulus = 0.
   Proof.
     intros units.
@@ -633,7 +948,7 @@ Section WithFField.
     rewrite mod_inv_mod_idemp, mod_inv_mul.
     destruct units as [unit units].
     rewrite <- Z.add_mod_idemp_l by lia.
-    rewrite <- (discrete_log_mul pk); auto.
+    rewrite <- (log_mul pk); auto.
     set (blah := match mod_inv _ _ * _ with _ => _ end).
 
 Fixpoint mod_prod (l : list Z) (m : Z) : Z :=
@@ -938,7 +1253,7 @@ Section Modulus.
       rewrite Z2Nat.inj_mul; try lia.
       cbn; unfold Pos.to_nat; cbn.
       rewrite Nat.add_comm, Nat.mul_comm at 1.
-      rewrite Nat.even_add_mul_2.
+      rewrite Nat.even_mul_add_2.
       cbn.
       rewrite Z.opp_add_distr, Z.mul_opp_l, Z.opp_involutive.
       cbn.
@@ -961,7 +1276,7 @@ Section Modulus.
     exists x; auto.
   Qed.
 
-  Definition discrete_log_with_spec (x : Z) :
+  Definition log_with_spec (x : Z) :
     IsUnit x ->
     { e : Z | 0 <= e < modulus /\ generator ^ e mod modulus = x mod modulus }.
   Proof.
@@ -990,38 +1305,38 @@ Section Modulus.
         tauto.
   Defined.
 
-  Definition discrete_log (x : Z) : Z.
+  Definition log (x : Z) : Z.
   Proof.
     destruct (Z.eq_dec (x mod modulus) 0) as [eq|ne].
     - exact 0.
-    - exact (proj1_sig (discrete_log_with_spec x ne)).
+    - exact (proj1_sig (log_with_spec x ne)).
   Defined.
 
-  Lemma discrete_log_spec x :
+  Lemma log_spec x :
     IsUnit x ->
-    0 <= discrete_log x < modulus /\
-    generator ^ discrete_log x mod modulus = x mod modulus.
+    0 <= log x < modulus /\
+    generator ^ log x mod modulus = x mod modulus.
   Proof.
     intros is_unit.
-    unfold discrete_log.
+    unfold log.
     destruct (Z.eq_dec _ _).
     - contradiction.
-    - apply (proj2_sig (discrete_log_with_spec x n)).
+    - apply (proj2_sig (log_with_spec x n)).
   Qed.
 
-  Lemma discrete_log_mul x y :
+  Lemma log_mul x y :
     IsUnit x ->
     IsUnit y ->
-    discrete_log (x * y) = (discrete_log x + discrete_log y) mod modulus.
+    log (x * y) = (log x + log y) mod modulus.
   Proof.
     Admitted.
 
-  Lemma discrete_log_mod x :
-    discrete_log x mod modulus = discrete_log x.
+  Lemma log_mod x :
+    log x mod modulus = log x.
   Proof.
-    unfold discrete_log.
+    unfold log.
     destruct (Z.eq_dec (x mod modulus) 0) as [eq|ne]; auto.
-    pose proof (proj2_sig (discrete_log_with_spec x ne)) as H.
+    pose proof (proj2_sig (log_with_spec x ne)) as H.
     cbn in H.
     destruct H as [H _].
     rewrite Z.mod_small; auto.
@@ -1103,7 +1418,7 @@ Section Modulus.
 
   Lemma sum_pks pks :
     All IsUnit pks ->
-    sumZ (fun '(pk, rk) => discrete_log pk + discrete_log rk)
+    sumZ (fun '(pk, rk) => log pk + log rk)
          (zip pks (reconstructed_keys pks)) mod modulus = 0.
   Proof.
     intros units.
@@ -1113,7 +1428,7 @@ Section Modulus.
     rewrite mod_inv_mod_idemp, mod_inv_mul.
     destruct units as [unit units].
     rewrite <- Z.add_mod_idemp_l by lia.
-    rewrite <- (discrete_log_mul pk); auto.
+    rewrite <- (log_mul pk); auto.
     set (blah := match mod_inv _ _ * _ with _ => _ end).
 
 
@@ -1204,7 +1519,7 @@ Proof.
 Qed.
    *)
 
-  Lemma discrete_log z :
+  Lemma log z :
     z <> 0 ->
     exists! e, generator ^ e mod modulus = z mod modulus.
   Proof.
@@ -1268,7 +1583,7 @@ Qed.
       - apply AllUnits_cons_r in pks_pos.
         destruct pks_pos as [pk_pos pks_pos].
         destruct IH as [tl IH]; [tauto|].
-        destruct (discrete_log pk ltac:(lia)) as [e [e_eq e_uniq]].
+        destruct (log pk ltac:(lia)) as [e [e_eq e_uniq]].
         exists (e :: tl).
         cbn.
         rewrite IH.
@@ -1285,13 +1600,415 @@ Qed.
                                  cbn.
 
 *)
-End Modulus.
+*)
+*)
+End WithFField.
 
-From mathcomp Elmequire Import ssreflect ssrbool ssrfun eqtype ssrnat seq div.
-From mathcomp Elmequire Import fintype bigop prime finset fingroup morphism.
-From mathcomp Elmequire Import perm automorphism quotient gproduct ssralg.
-From mathcomp Elmequire Import finalg zmodp poly cyclic.
+Section Zp.
+  Fixpoint mod_prod (l : list Z) (m : Z) : Z :=
+    match l with
+    | [] => 1
+    | x :: xs => x * mod_prod xs m mod m
+    end.
 
-Section Foo.
-  Context `(blah : nat).
-  Lemma foo (G : {set 'units_Zp blah}) x (gen : generator G x) : True.
+  Fixpoint mod_pow_aux (a : bigZ) (x : positive) (m : bigZ) (r : bigZ) : bigZ :=
+    match x with
+    | x~0%positive => mod_pow_aux (BigZ.square a mod m) x m r
+    | x~1%positive => mod_pow_aux (BigZ.square a mod m) x m (r * a mod m)
+    | _ => r * a mod m
+    end.
+
+  Hint Rewrite BigZ.square_spec BigZ.spec_pow_pos : zsimpl.
+  Hint Rewrite BigN.spec_of_pos : nsimpl.
+
+  Global Instance BigZ_square_wd :
+    Proper (BigZ.eq ==> BigZ.eq) BigZ.square.
+  Proof.
+    intros a b eq.
+    autorewrite with zsimpl in *.
+    now rewrite eq.
+  Qed.
+
+  Global Instance mod_pow_aux_wd :
+    Proper (BigZ.eq ==> eq ==> BigZ.eq ==> BigZ.eq ==> BigZ.eq) mod_pow_aux.
+  Proof.
+    (*intros a1 a2 elmeq ? x -> m1 m2 meq r1 r2 elmeq.*)
+    intros a1 a2 elmeq ? x ->.
+    revert a1 a2 elmeq.
+    induction x; intros a1 a2 aeq m1 m2 meq r1 r2 req.
+    - cbn.
+      apply IHx.
+      + rewrite aeq, meq.
+        reflexivity.
+      + auto.
+      + rewrite aeq, meq, req.
+        reflexivity.
+    - cbn.
+      apply IHx.
+      + rewrite aeq, meq.
+        reflexivity.
+      + auto.
+      + rewrite req.
+        reflexivity.
+    - cbn.
+      rewrite aeq, meq, req.
+      reflexivity.
+  Qed.
+
+  Definition mod_pow (a x m : Z) : Z :=
+    match m with
+    | Z0 => 0
+    | _ =>
+      match x with
+      | Z0 => 1 mod m
+      | Zneg _ => 0
+      | Zpos x => [mod_pow_aux (BigZ.of_Z a) x (BigZ.of_Z m) 1]%bigZ
+      end
+    end.
+
+  Local Open Scope Z.
+  Lemma Z_pow_pos_mod_idemp a x m :
+    Z.pow_pos (a mod m) x mod m = Z.pow_pos a x mod m.
+  Proof.
+    destruct (m =? 0) eqn:mzero.
+    {
+      apply Z.eqb_eq in mzero.
+      rewrite mzero.
+      now rewrite 2!Zmod_0_r.
+    }
+
+    apply Z.eqb_neq in mzero.
+
+    unfold Z.pow_pos.
+    assert (H: forall start l x, Pos.iter (Z.mul l) start x = start * Pos.iter (Z.mul l) 1 x).
+    {
+      clear.
+      intros start l x.
+      revert start.
+      induction x; intros start.
+      - cbn.
+        rewrite 2!IHx.
+        rewrite (IHx (Pos.iter (Z.mul l) 1 x)).
+        lia.
+      - cbn.
+        rewrite 2!IHx.
+        rewrite (IHx (Pos.iter (Z.mul l) 1 x)).
+        lia.
+      - cbn.
+        lia.
+    }
+
+    induction x.
+    - cbn.
+      rewrite (H _ (a mod m)).
+      rewrite (H _ a).
+      rewrite Z.mul_assoc.
+      assert (H2: forall a b c,
+                 ((a mod m) * b * c) mod m = ((a mod m) * (b mod m) * (c mod m)) mod m).
+      {
+        clear.
+        intros.
+        rewrite <- Z.mul_assoc.
+        rewrite Zmult_mod_idemp_l.
+
+        rewrite <- Z.mul_assoc.
+        rewrite Zmult_mod_idemp_l.
+
+        rewrite 2!Z.mul_assoc.
+        rewrite (Z.mul_comm _ (c mod m)).
+        rewrite Zmult_mod_idemp_l.
+        rewrite Z.mul_assoc.
+        rewrite (Z.mul_comm _ (b mod m)).
+        rewrite Zmult_mod_idemp_l.
+        replace (b * (c * a)) with (a * b * c) by lia; auto.
+      }
+
+      rewrite H2.
+      rewrite IHx.
+      rewrite <- H2.
+
+      rewrite <- Z.mul_assoc.
+      now rewrite Zmult_mod_idemp_l.
+    - cbn.
+      rewrite H.
+      rewrite Z.mul_mod by auto.
+      rewrite IHx.
+      rewrite <- Z.mul_mod by auto.
+      now rewrite <- H.
+    - cbn.
+      rewrite 2!Z.mul_1_r.
+      now apply Z.mod_mod.
+  Qed.
+  Local Open Scope bigZ.
+  Lemma mod_pow_aux_spec a x m r :
+    m != 0 ->
+    mod_pow_aux a x m r == r * BigZ.pow_pos a x mod m.
+  Proof.
+    cbn.
+    intros nonzero.
+    revert a r.
+    induction x; intros a r.
+    - cbn.
+      specialize (IHx ((a * a) mod m) ((r * a) mod m))%bigZ.
+      autorewrite with zsimpl.
+      rewrite IHx.
+      unfold "==".
+      autorewrite with zsimpl.
+      cbn -[Z.pow_pos].
+      rewrite <- Z.mul_mod_idemp_r by auto.
+      rewrite Z_pow_pos_mod_idemp.
+      rewrite <- Z.mul_mod by auto.
+      replace (x~1)%positive with (x*2+1)%positive by lia.
+      rewrite Zpower_pos_is_exp.
+      cbn.
+      rewrite 2!Z.pow_pos_fold.
+      rewrite Z.pow_mul_l.
+      rewrite <- Z.pow_add_r by (auto with zarith).
+      rewrite Zred_factor1.
+      f_equal.
+      lia.
+    - cbn.
+      rewrite IHx.
+      unfold "==".
+      autorewrite with zsimpl.
+      cbn -[Z.pow_pos].
+      rewrite <- Zmult_mod_idemp_r.
+      rewrite Z_pow_pos_mod_idemp.
+      rewrite Zmult_mod_idemp_r.
+      replace (x~0)%positive with (x*2)%positive by lia.
+      rewrite 2!Z.pow_pos_fold.
+      rewrite Z.pow_mul_l.
+      rewrite <- Z.pow_add_r by (auto with zarith).
+      now rewrite Zred_factor1.
+    - cbn.
+      unfold "==".
+      autorewrite with zsimpl.
+      f_equal; lia.
+  Qed.
+
+  Local Open Scope Z.
+  Lemma mod_pow_spec a x m :
+    mod_pow a x m = a^x mod m.
+  Proof.
+    unfold mod_pow.
+    destruct m.
+    - now rewrite Zmod_0_r.
+    - destruct x; auto.
+      rewrite mod_pow_aux_spec.
+      + autorewrite with zsimpl.
+        f_equal.
+        cbn.
+        destruct (Z.pow_pos _ _); auto.
+      + intro cont.
+        unfold "==" in *.
+        cbn in *.
+        autorewrite with nsimpl in cont.
+        lia.
+    - destruct x; auto.
+      rewrite mod_pow_aux_spec.
+      + autorewrite with zsimpl.
+        f_equal.
+        cbn.
+        destruct (Z.pow_pos _ _); auto.
+      + intro cont.
+        unfold "==" in *.
+        cbn in *.
+        autorewrite with nsimpl in cont.
+        lia.
+  Qed.
+
+  Lemma Z_pow_mod_idemp a x m :
+    (a mod m)^x mod m = a^x mod m.
+  Proof.
+    destruct x; auto.
+    cbn.
+    apply Z_pow_pos_mod_idemp.
+  Qed.
+
+  Lemma mod_pow_mod_idemp a e m :
+    mod_pow (a mod m) e m = mod_pow a e m.
+  Proof. now rewrite !mod_pow_spec, Z_pow_mod_idemp. Qed.
+
+  (* Find y such that x*y = 1 mod m *)
+  Definition mod_inv (x m : Z) : Z :=
+    mod_pow x (m - 2) m.
+
+  Lemma mod_inv_spec x m :
+    prime m ->
+    x mod m <> 0 ->
+    (x * mod_inv x m) mod m = 1.
+  Proof.
+    intros is_prime xnm.
+    pose proof (prime_ge_2 _ is_prime).
+    unfold mod_inv.
+    rewrite (mod_pow_spec x (m - 2) m).
+    rewrite Z.mul_mod_idemp_r by lia.
+    rewrite <- Z.pow_succ_r by lia.
+    replace (Z.succ (m - 2)) with (m - 1) by lia.
+    (* Use proof of Euler's theorem from Coqprime *)
+    rewrite <- (Euler.prime_phi_n_minus_1 _ is_prime).
+    apply phi_power_is_1; try lia.
+    apply rel_prime_sym.
+    apply prime_rel_prime; auto.
+    intros div.
+    pose proof (Zdivide_mod _ _ div).
+    tauto.
+  Qed.
+
+  Lemma mod_inv_mod_idemp (x m : Z) :
+    mod_inv (x mod m) m = mod_inv x m.
+  Proof.
+    unfold mod_inv.
+    rewrite 2!mod_pow_spec.
+    now rewrite Z_pow_mod_idemp.
+  Qed.
+
+  Lemma mod_inv_mul a b m :
+    mod_inv (a * b) m =
+    (mod_inv a m * mod_inv b m) mod m.
+  Proof.
+    unfold mod_inv.
+    now rewrite !mod_pow_spec, Z.pow_mul_l, Zmult_mod.
+  Qed.
+
+  Local Open Scope Z.
+  Definition Zp_ffield (p : Z) :
+    prime p -> FField Z.
+  Proof.
+    intros isprime.
+    pose proof (prime_ge_2 _ isprime).
+    refine
+      {| elmeq a b := a mod p = b mod p;
+         zero := 0;
+         one := 1;
+         add a a' := (a + a') mod p;
+         mul a a' := (a * a') mod p;
+         opp a := p - a;
+         inv a := mod_inv a p;
+         pow a e := mod_pow a (e mod (p - 1)) p;
+         order := p;
+      |}.
+    - intros x y.
+      apply Z.eq_dec.
+    - lia.
+    - constructor; auto.
+      now intros a a' a'' -> ->.
+    - intros a a' aeq b b' beq.
+      now rewrite Z.add_mod, aeq, beq, <- Z.add_mod by lia.
+    - intros a a' aeq b b' beq.
+      now rewrite Z.mul_mod, aeq, beq, <- Z.mul_mod by lia.
+    - intros a a' aeq.
+      now rewrite Zminus_mod, aeq, <- Zminus_mod.
+    - intros a a' aeq.
+      now rewrite <- mod_inv_mod_idemp, aeq, mod_inv_mod_idemp.
+    - intros a a' aeq e e' eeq.
+      now rewrite eeq, <- mod_pow_mod_idemp, aeq, mod_pow_mod_idemp.
+    - now rewrite Z.mod_1_l, Z.mod_0_l by lia.
+    - intros a b.
+      now replace (a + b) with (b + a) by lia.
+    - intros a b c.
+      rewrite !Z.mod_mod by lia.
+      rewrite Z.add_mod_idemp_l, Z.add_mod_idemp_r by lia.
+      apply f_equal2; lia.
+    - intros a b.
+      now replace (a * b) with (b * a) by lia.
+    - intros a b c.
+      repeat (try rewrite Z.mul_mod_idemp_l; try rewrite Z.mul_mod_idemp_r); try lia.
+      now replace (a * (b * c)) with (a * b * c) by lia.
+    - intros a.
+      now rewrite Z.mod_mod by lia.
+    - intros a.
+      now rewrite Z.mod_mod by lia.
+    - intros a.
+      rewrite Z.mod_mod by lia.
+      now replace (1 * a) with a by lia.
+    - intros a.
+      rewrite Z.mod_mod by lia.
+      replace (p - a + a) with p by lia.
+      rewrite Z.mod_same, Z.mod_0_l; lia.
+    - intros a anp.
+      rewrite Z.mod_0_l, Z.mod_1_l in * by lia.
+      pose proof (mod_inv_spec _ _ isprime anp).
+      rewrite Z.mod_mod by lia.
+      now rewrite Z.mul_comm.
+    - intros a b anp bnp.
+      now rewrite mod_inv_mod_idemp, mod_inv_mul.
+    - intros a b c.
+      repeat (try rewrite Z.mul_mod_idemp_l;
+              try rewrite Z.mul_mod_idemp_r;
+              try rewrite Z.add_mod_idemp_l;
+              try rewrite Z.add_mod_idemp_r;
+              try rewrite Z.mod_mod); try lia.
+      apply f_equal2; lia.
+    - intros a anp.
+      cbn.
+      rewrite mod_pow_spec.
+      rewrite Z.pow_0_r.
+      now rewrite Z.mod_mod by lia.
+    - intros a.
+      assert (p > 2) by admit.
+      destruct (Z.eq_dec p 2) as [->|?].
+      + cbn.
+        lia.
+      + rewrite Z.mod_1_l by lia.
+        rewrite mod_pow_spec.
+        rewrite Z.pow_1_r.
+        apply Z.mod_mod; lia.
+    - intros a e anp.
+      rewrite mod_pow_spec.
+      cbn.
+      assert (apprime : forall a, a mod p <> 0 -> rel_prime a p).
+      {
+        clear -isprime.
+        intros a amodp.
+        apply rel_prime_sym.
+        apply prime_rel_prime; auto.
+        intros div. apply Zdivide_mod in div.
+        congruence.
+      }
+
+      assert (1 < p) as ltp by lia.
+      assert (gpow_mod :
+                forall a e,
+                  a mod p <> 0 ->
+                  0 <= e ->
+                  a ^ e mod p = gpow (a mod p) (ZPGroup p ltp) e).
+      {
+        clear -isprime apprime.
+        intros a e ap0 ege.
+        apply Zpower_mod_is_gpow; auto.
+      }
+
+      assert (0 <= e mod (p - 1))
+        by (pose proof (Z.mod_pos_bound e (p - 1) ltac:(lia)); lia).
+      rewrite gpow_mod; auto.
+      assert (in_zpstar: forall a, a mod p <> 0 <-> List.In (a mod p)
+                                                            (FGroup.s (ZPGroup p ltp))).
+      {
+        clear -isprime apprime.
+        intros a.
+        split.
+        - intros ap0.
+          apply in_mod_ZPGroup.
+          auto.
+        - intros isin.
+          cbn in *.
+          pose proof (IGroup.isupport_is_inv_true _ _ _ _ _ _ isin).
+          rewrite rel_prime_is_inv in H by lia.
+          destruct (rel_prime_dec (a mod p) p); try congruence.
+          apply Zrel_prime_neq_mod_0; [lia|].
+          apply rel_prime_mod_rev; auto; lia.
+      }
+
+      apply in_zpstar.
+      rewrite <- gpow_mod; auto.
+      rewrite Z.mod_mod by lia.
+      rewrite gpow_mod; auto.
+      apply gpow_in.
+      now apply in_zpstar.
+  Defined.
+
+End Zp.
+
+Section WithZp.
+End WithZp.
