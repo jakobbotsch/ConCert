@@ -28,7 +28,6 @@ Class FField {A : Type} :=
     inv : A -> A;
     pow : A -> Z -> A;
 
-
     order : Z;
     expeq e e' := e mod (order - 1) = e' mod (order - 1);
 
@@ -39,7 +38,9 @@ Class FField {A : Type} :=
     mul_proper :> Proper (elmeq ==> elmeq ==> elmeq) mul;
     opp_proper :> Proper (elmeq ==> elmeq) opp;
     inv_proper :> Proper (elmeq ==> elmeq) inv;
-    pow_proper :> Proper (elmeq ==> expeq ==> elmeq) pow;
+    pow_proper :> Proper (elmeq ==> eq ==> elmeq) pow;
+    pow_exp_proper a :>
+      ~(elmeq a zero) -> Proper (expeq ==> elmeq) (pow a);
 
     one_neq_zero : ~(elmeq one zero);
 
@@ -68,17 +69,17 @@ Class FField {A : Type} :=
 
     pow_1_r a : elmeq (pow a 1) a;
 
-    pow_opp a e : elmeq (pow a (-e)) (inv (pow a e));
+    pow_opp_1 a :
+      ~(elmeq a zero) ->
+      elmeq (pow a (-1)) (inv a);
 
     pow_plus a e e' :
+      ~(elmeq a zero) ->
       elmeq (pow a (e + e')) (mul (pow a e) (pow a e'));
 
     pow_nonzero a e :
       ~(elmeq a zero) ->
       ~(elmeq (pow a e) zero);
-
-    pow_mul a b e :
-      pow (mul a b) e = mul (pow a e) (pow b e);
 
     inv_nonzero a :
       ~(elmeq a zero) ->
@@ -218,17 +219,16 @@ Section WithFField.
     - rewrite pow_0_r; auto.
       apply log_1_l.
     - replace (Z.succ e) with (e + 1)%Z by lia.
-      rewrite pow_plus.
+      rewrite pow_plus by auto.
       rewrite log_mul; auto.
       rewrite IHe.
       replace ((e + 1) * log a)%Z with (e * log a + log a)%Z by lia.
       now rewrite pow_1_r.
     - replace (Z.pred e) with (e + (-1))%Z by lia.
-      rewrite pow_plus.
-      rewrite log_mul; auto.
+      rewrite pow_plus by auto.
+      rewrite log_mul by auto.
       rewrite IHe.
-      rewrite (pow_opp a 1).
-      rewrite pow_1_r.
+      rewrite (pow_opp_1 a) by auto.
       rewrite log_inv.
       now replace ((e + -1) * log a)%Z with (e * log a + - log a)%Z by lia.
   Qed.
@@ -243,6 +243,9 @@ Section WithFField.
     rewrite <- (inv_inv_l c) by auto.
     now rewrite <- mul_assoc, prod, mul_assoc.
   Qed.
+
+  Instance pow_generator_proper : Proper (expeq ==> elmeq) (pow generator) :=
+    pow_exp_proper _ generator_nonzero.
 
   Lemma log_both a b :
     a !== 0 ->
@@ -1660,7 +1663,7 @@ Section Zp.
     | Z0 => 0
     | _ =>
       match x with
-      | Z0 => 1 mod m
+      | Z0 => a ^ 0 mod m
       | Zneg _ => 0
       | Zpos x => [mod_pow_aux (BigZ.of_Z a) x (BigZ.of_Z m) 1]%bigZ
       end
@@ -1885,7 +1888,7 @@ Section Zp.
          mul a a' := (a * a') mod p;
          opp a := p - a;
          inv a := mod_inv a p;
-         pow a e := mod_pow a (e mod (p - 1)) p;
+         pow a e := if a mod p =? 0 then mod_pow a e p else mod_pow a (e mod (p - 1)) p;
          order := p;
       |}.
     - intros x y.
@@ -1901,8 +1904,12 @@ Section Zp.
       now rewrite Zminus_mod, aeq, <- Zminus_mod.
     - intros a a' aeq.
       now rewrite <- mod_inv_mod_idemp, aeq, mod_inv_mod_idemp.
-    - intros a a' aeq e e' eeq.
-      now rewrite eeq, <- mod_pow_mod_idemp, aeq, mod_pow_mod_idemp.
+    - intros a a' aeq e e' ->.
+      now rewrite <- !(mod_pow_mod_idemp a), aeq, !mod_pow_mod_idemp.
+    - intros a anp e e' eeq.
+      cbn in anp.
+      rewrite (proj2 (Z.eqb_neq _ _) anp).
+      now rewrite eeq.
     - now rewrite Z.mod_1_l, Z.mod_0_l by lia.
     - intros a b.
       now replace (a + b) with (b + a) by lia.
@@ -1944,16 +1951,43 @@ Section Zp.
       cbn.
       rewrite mod_pow_spec.
       rewrite Z.pow_0_r.
-      now rewrite Z.mod_mod by lia.
+      now destruct (a mod p =? 0);
+        rewrite Z.mod_mod by lia.
     - intros a.
-      assert (p > 2) by admit.
+      rewrite !mod_pow_spec.
       destruct (Z.eq_dec p 2) as [->|?].
-      + cbn.
-        lia.
+      + destruct (Z.eq_dec (a mod 2) 0) as [eq|neq].
+        * rewrite eq.
+          cbn.
+          now rewrite Z.mul_1_r, eq.
+        * rewrite (proj2 (Z.eqb_neq _ _) neq).
+          cbn.
+          pose proof (Z.mod_pos_bound a 2 ltac:(lia)).
+          lia.
       + rewrite Z.mod_1_l by lia.
-        rewrite mod_pow_spec.
         rewrite Z.pow_1_r.
-        apply Z.mod_mod; lia.
+        destruct (a mod p =? 0); apply Z.mod_mod; lia.
+    - intros a ap0.
+      cbn in ap0.
+      rewrite (proj2 (Z.eqb_neq _ _) ap0).
+      unfold mod_inv.
+      destruct (Z.eq_dec p 2) as [->|?]; auto.
+      rewrite (Z_mod_nz_opp_full 1) by (rewrite Z.mod_1_l by lia; lia).
+      rewrite Z.mod_1_l by lia.
+      now replace (p - 1 - 1) with (p - 2) by lia.
+    - intros a e e' ap0.
+      cbn in ap0.
+      rewrite (proj2 (Z.eqb_neq _ _) ap0).
+      rewrite Z.add_mod by lia.
+      rewrite !mod_pow_spec.
+      rewrite !Z.mod_mod by lia.
+      destruct (Z.eq_dec (a mod p) 0) as [eq|ne].
+      + rewrite eq.
+        cbn.
+        rewrite !mod_pow_spec.
+        Search (_ ^ (_ + _)).
+        rewrite Z.pow_add_r.
+        rewrite
     - intros a e anp.
       rewrite mod_pow_spec.
       cbn.
