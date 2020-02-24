@@ -10,7 +10,6 @@ From Coqprime Require Import Zp FGroup EGroup Cyclic.
 From Bignums Require Import BigZ.
 From Equations Require Import Equations.
 
-Require Import Egcd.
 Require Import Extras.
 Import ListNotations.
 
@@ -701,8 +700,8 @@ Module Zp.
   Definition mod_pow_pos (a : Z) (x : positive) (m : Z) : Z :=
     mod_pow_pos_aux a x m 1.
 
-  Definition mod_inv (a p : Z) : Z :=
-    fst (egcd (a mod p) p) mod p.
+  Definition mod_inv (a : Z) (p : Z) : Z :=
+    mod_pow_pos a (Z.to_pos (p - 2)) p.
 
   Definition mod_pow (a x p : Z) : Z :=
     match x with
@@ -798,10 +797,7 @@ Module Zp.
   Proof. apply mod_pow_pos_aux_0_r. Qed.
   Lemma mod_inv_0_r a :
     mod_inv a 0 = 0.
-  Proof.
-    unfold mod_inv.
-    now rewrite Zmod_0_r.
-  Qed.
+  Proof. apply mod_pow_pos_0_r. Qed.
   Lemma mod_pow_0_r a x :
     mod_pow a x 0 = 0.
   Proof.
@@ -890,12 +886,7 @@ Module Zp.
 
   Lemma mod_inv_mod_idemp a p :
     mod_inv (a mod p) p = mod_inv a p.
-  Proof.
-    unfold mod_inv.
-    destruct (Z.eq_dec p 0) as [->|?].
-    - now rewrite !Zmod_0_r.
-    - now rewrite Z.mod_mod by lia.
-  Qed.
+  Proof. apply mod_pow_pos_mod_idemp. Qed.
 
   Lemma mod_pow_mod_idemp a x p :
     mod_pow (a mod p) x p = mod_pow a x p.
@@ -919,12 +910,7 @@ Module Zp.
   Proof. apply mod_pow_pos_aux_mod. Qed.
   Lemma mod_inv_mod a p :
     mod_inv a p mod p = mod_inv a p.
-  Proof.
-    destruct (Z.eq_dec p 0) as [->|?].
-    - now rewrite mod_inv_0_r.
-    - unfold mod_inv.
-      now rewrite Z.mod_mod by auto.
-  Qed.
+  Proof. apply mod_pow_pos_mod. Qed.
 
   Lemma mod_pow_mod a x p :
     mod_pow a x p mod p = mod_pow a x p.
@@ -1012,31 +998,15 @@ Module Zp.
     mod_pow_pos 1 x p = 1 mod p.
   Proof. apply mod_pow_pos_aux_1_l. Qed.
   Lemma mod_inv_1_l p :
-    prime p ->
     mod_inv 1 p = 1 mod p.
-  Proof.
-    intros isprime.
-    pose proof (prime_ge_2 _ isprime).
-    unfold mod_inv.
-    pose proof (egcd_spec (1 mod p) p).
-    destruct (egcd _ _) as [x y].
-    cbn.
-    rewrite Z.mod_1_l in * by lia.
-    rewrite Z.gcd_1_l in *.
-    replace x with (1 + (-y)*p) by lia.
-    rewrite Z.mod_add by lia.
-    apply Z.mod_1_l; lia.
-  Qed.
-
+  Proof. apply mod_pow_pos_1_l. Qed.
   Lemma mod_pow_1_l x p :
-    prime p ->
     mod_pow 1 x p = 1 mod p.
   Proof.
-    intros isprime.
     destruct x; auto; cbn.
     - apply mod_pow_pos_1_l.
     - rewrite mod_pow_pos_1_l, mod_inv_mod_idemp.
-      apply mod_inv_1_l; auto.
+      apply mod_inv_1_l.
   Qed.
 
   Lemma mod_pow_pos_aux_1_r a p r :
@@ -1073,22 +1043,6 @@ Module Zp.
       now rewrite <- Pos.add_1_r.
   Qed.
 
-  Lemma gcd_amodp_p a p :
-    prime p ->
-    a mod p <> 0 ->
-    Z.gcd (a mod p) p = 1.
-  Proof.
-    intros isprime ap0.
-    pose proof (prime_ge_2 _ isprime).
-    apply Zgcd_1_rel_prime.
-    apply rel_prime_sym.
-    apply prime_rel_prime; auto.
-    intros divides.
-    apply Zdivide_mod in divides.
-    rewrite Z.mod_mod in divides by lia.
-    congruence.
-  Qed.
-
   Lemma mul_mod_inv a p :
     prime p ->
     a mod p <> 0 ->
@@ -1097,15 +1051,15 @@ Module Zp.
     intros isprime ap0.
     pose proof (prime_ge_2 _ isprime).
     unfold mod_inv.
-    pose proof (egcd_spec (a mod p) p).
-    destruct (egcd _ _) as [x y].
-    rewrite gcd_amodp_p in * by auto.
-    cbn.
-    rewrite <- Z.mul_mod_idemp_l by lia.
-    rewrite Z.mul_mod_idemp_r by lia.
-    replace (a mod p * x) with (1 + (-y)*p) by lia.
-    rewrite Z.mod_add by lia.
-    now rewrite Z.mod_1_l by lia.
+    rewrite mod_pow_pos_succ_r.
+    destruct (Z.eq_dec p 2) as [->|?].
+    - cbn.
+      pose proof (Z.mod_pos_bound a 2 ltac:(lia)).
+      rewrite Z.mul_mod by discriminate.
+      now replace (a mod 2) with 1 in * by lia.
+    - rewrite <- Z2Pos.inj_succ by lia.
+      replace (Z.succ (p - 2)) with (p - 1) by lia.
+      apply mod_pow_pos_fermat; auto.
   Qed.
 
   Lemma mul_mod_nonzero a b p :
@@ -1167,13 +1121,6 @@ Module Zp.
     mod_inv a p <> 0.
   Proof.
     intros isprime ap0.
-    unfold mod_inv.
-    pose proof (egcd_spec (a mod p) p).
-    destruct (egcd _ _) as [x y].
-    cbn.
-    rewrite gcd_amodp_p in * by auto.
-    destruct (Z.eq_dec (x mod p) 0).
-    - replace x with
     apply mod_pow_pos_nonzero; auto.
   Qed.
   Hint Resolve mod_inv_nonzero : core.
