@@ -1,6 +1,7 @@
 From Coq Require Import List.
 From Coq Require Import Morphisms.
 From Coq Require Import PArith.
+From Coq Require Import Permutation.
 From Coq Require Import Psatz.
 From Coq Require Import SetoidTactics.
 From Coq Require Import Field.
@@ -15,8 +16,8 @@ Import ListNotations.
 
 Local Open Scope Z.
 
-Class BoardroomField {A : Type} :=
-  build_ffield {
+Class BoardroomAxioms {A : Type} :=
+  {
     elmeq : A -> A -> Prop;
     elmeq_dec x y : {elmeq x y} + {~(elmeq x y)};
     zero : A;
@@ -83,7 +84,7 @@ Class BoardroomField {A : Type} :=
       ~(elmeq (inv a) zero);
   }.
 
-Arguments BoardroomField : clear implicits.
+Arguments BoardroomAxioms : clear implicits.
 
 Delimit Scope ffield_scope with ffield.
 
@@ -98,7 +99,7 @@ Notation "a 'exp=' b" := (expeq a b) (at level 70) : ffield.
 Notation "a 'exp<>' b" := (~(expeq a b)) (at level 70) : ffield.
 
 Local Open Scope ffield.
-Global Instance oeq_equivalence {A : Type} (field : BoardroomField A) : Equivalence expeq.
+Global Instance oeq_equivalence {A : Type} (field : BoardroomAxioms A) : Equivalence expeq.
 Proof.
   unfold expeq.
   constructor.
@@ -107,7 +108,7 @@ Proof.
   - now intros ? ? ? -> ->.
 Qed.
 
-Definition BoardroomField_field_theory {A : Type} (field : BoardroomField A) :
+Definition BoardroomAxioms_field_theory {A : Type} (field : BoardroomAxioms A) :
   field_theory
     zero one
     add mul
@@ -130,13 +131,14 @@ Proof.
   - apply inv_inv_l.
 Qed.
 
-Class Generator {A : Type} (field : BoardroomField A) :=
+Class Generator {A : Type} (field : BoardroomAxioms A) :=
   build_generator {
     generator : A;
     generator_nonzero : generator !== 0;
+    generator_generates a : a !== 0 -> exists! e, 0 <= e < order - 1 /\ generator^e == a;
   }.
 
-Class DiscreteLog {A : Type} (field : BoardroomField A) (g : Generator field) :=
+Class DiscreteLog {A : Type} (field : BoardroomAxioms A) (g : Generator field) :=
   build_log {
     (* This is computationally intractable, but we still elmequire it
     for ease of specification *)
@@ -156,13 +158,13 @@ Class DiscreteLog {A : Type} (field : BoardroomField A) (g : Generator field) :=
     log_generator : log generator = 1%Z;
   }.
 
-Section WithBoardroomField.
+Section WithBoardroomAxioms.
   Context {A : Type}.
-  Context {field : BoardroomField A}.
+  Context {field : BoardroomAxioms A}.
   Context {gen : Generator field}.
   Context {disc_log : DiscreteLog field gen}.
 
-  Add Field ff : (BoardroomField_field_theory field).
+  Add Field ff : (BoardroomAxioms_field_theory field).
 
   Local Open Scope ffield.
 
@@ -294,7 +296,7 @@ Section WithBoardroomField.
     - apply F2AF.
       + typeclasses eauto.
       + constructor; typeclasses eauto.
-      + apply (BoardroomField_field_theory field).
+      + apply (BoardroomAxioms_field_theory field).
   Qed.
 
   Hint Resolve int_domain : core.
@@ -364,21 +366,18 @@ Section WithBoardroomField.
     rk ^ sk * if sv then generator else 1.
 
   Fixpoint bruteforce_tally_aux
-           (aeq : forall a a', {a == a'} + {a !== a'})
            (n : nat)
            (votes_product : A) : option nat :=
-    if aeq (generator ^ (Z.of_nat n)) votes_product then
+    if elmeq_dec (generator ^ (Z.of_nat n)) votes_product then
       Some n
     else
       match n with
       | 0 => None
-      | S n => bruteforce_tally_aux aeq n votes_product
+      | S n => bruteforce_tally_aux n votes_product
       end%nat.
 
-  Definition bruteforce_tally
-           (aeq : forall a a', {a == a'} + {a !== a'})
-           (votes : list A) : option nat :=
-    bruteforce_tally_aux aeq (length votes) (prod votes).
+  Definition bruteforce_tally (votes : list A) : option nat :=
+    bruteforce_tally_aux (length votes) (prod votes).
 
   Definition elmseq (l l' : list A) : Prop :=
     Forall2 elmeq l l'.
@@ -582,6 +581,7 @@ Section WithBoardroomField.
                               (seq 0 (length l))));
       cycle 1.
     {
+
       intros i ?.
       rewrite Z.mul_sub_distr_l.
       rewrite 2!sumZ_mul.
@@ -685,7 +685,130 @@ Section WithBoardroomField.
       rewrite sum_lemma.
       reflexivity.
   Qed.
-End WithBoardroomField.
+
+  Instance prod_proper :
+    Proper (@Permutation A ==> elmeq) prod.
+  Proof.
+    intros l l' permeq.
+    induction permeq.
+    - reflexivity.
+    - cbn.
+      now rewrite IHpermeq.
+    - cbn.
+      rewrite !mul_assoc.
+      now rewrite (mul_comm y).
+    - now rewrite IHpermeq1, IHpermeq2.
+  Qed.
+
+  Instance bruteforce_tally_aux_proper :
+    Proper (eq ==> elmeq ==> eq) bruteforce_tally_aux.
+  Proof.
+    intros n ? <- p p' prodeq.
+    induction n as [|n IH].
+    - cbn.
+      destruct (elmeq_dec _ _), (elmeq_dec _ _); auto.
+      + rewrite prodeq in e; contradiction.
+      + rewrite <- prodeq in e; contradiction.
+    - cbn.
+      destruct (elmeq_dec _ _), (elmeq_dec _ _); auto.
+      + rewrite prodeq in e; contradiction.
+      + rewrite <- prodeq in e; contradiction.
+  Qed.
+
+  Lemma bruteforce_tally_aux_correct result max :
+    Z.of_nat max < order - 1 ->
+    (result <= max)%nat ->
+    bruteforce_tally_aux max (generator ^ Z.of_nat result) = Some result.
+  Proof.
+    intros max_lt result_le.
+    induction max as [|max IH].
+    - replace result with 0%nat by lia.
+      cbn.
+      destruct (elmeq_dec _ _); auto.
+      contradiction n; reflexivity.
+    - destruct (Nat.eq_dec result (S max)) as [->|?].
+      + cbn.
+        destruct (elmeq_dec _ _); auto.
+        contradiction n; reflexivity.
+      + cbn -[Z.of_nat].
+        destruct (elmeq_dec _ _) as [eq|?]; auto.
+        * pose proof (generator_generates (generator ^ Z.of_nat result) ltac:(auto)).
+          destruct H as [e [sat unique]].
+          unshelve epose proof (unique (Z.of_nat (S max)) _) as smax.
+          { split; auto; lia. }
+          unshelve epose proof (unique (Z.of_nat result) _) as res.
+          { split; [lia|reflexivity]. }
+          rewrite <- (Z2Nat.id e) in smax, res by lia.
+          apply Nat2Z.inj in smax.
+          apply Nat2Z.inj in res.
+          congruence.
+        * apply IH; lia.
+  Qed.
+
+  Lemma sumZ_sumnat_votes (svs : nat -> bool) l :
+    sumZ (fun i => if svs i then 1%Z else 0%Z) l =
+    Z.of_nat (sumnat (fun i => if svs i then 1%nat else 0%nat) l).
+  Proof.
+    induction l as [|x xs IH]; auto.
+    cbn.
+    rewrite IH, Nat2Z.inj_add.
+    destruct (svs x); lia.
+  Qed.
+
+  Lemma bruteforce_tally_correct sks pks svs pvs pvs_passed count :
+    Z.of_nat count < order - 1 ->
+    pks = map (fun i => compute_public_key (sks i)) (seq 0 count) ->
+    pvs = map (fun i => compute_public_vote (reconstructed_key pks i)
+                                            (sks i)
+                                            (svs i))
+              (seq 0 count) ->
+    Permutation pvs pvs_passed ->
+    bruteforce_tally pvs_passed =
+    Some (sumnat (fun i => if svs i then 1 else 0)%nat (seq 0 count)).
+  Proof.
+    unfold bruteforce_tally.
+    intros countlt -> -> <-.
+    pose proof order_ge_2.
+    rewrite map_length, seq_length.
+    set (sks_list := map sks (seq 0 count)).
+    replace (map (fun i => compute_public_key (sks i)) (seq 0 count))
+      with (map compute_public_key sks_list); cycle 1.
+    {
+      subst sks_list.
+      now rewrite map_map.
+    }
+    replace (map (fun i => compute_public_vote
+                             (reconstructed_key (map compute_public_key sks_list) i)
+                             (sks i)
+                             (svs i))
+                 (seq 0 count))
+      with (map (fun i => compute_public_vote
+                             (reconstructed_key (map compute_public_key sks_list) i)
+                             (nth i sks_list 0%Z)
+                             (svs i))
+                (seq 0 (length sks_list))); cycle 1.
+    {
+      subst sks_list.
+      rewrite map_length, seq_length.
+      apply map_ext_in.
+      intros a ain.
+      apply in_seq in ain.
+      rewrite (map_nth_alt a (seq 0 count) sks 0%Z 0%nat) by (rewrite seq_length; lia).
+      now rewrite seq_nth by lia.
+    }
+
+    rewrite mul_public_votes.
+    subst sks_list.
+    unshelve epose proof
+             (sumnat_min_max (fun i => if svs i then 1 else 0) (seq 0 count) 0 1 _)%nat.
+    { intros; cbn; destruct (svs a); lia. }
+    rewrite map_length, seq_length in *.
+    rewrite Nat.mul_0_l, Nat.mul_1_l in *.
+    rewrite sumZ_sumnat_votes.
+    now rewrite bruteforce_tally_aux_correct by lia.
+  Qed.
+
+End WithBoardroomAxioms.
 
 Module Zp.
   Local Open Scope Z.
@@ -1342,8 +1465,8 @@ Module Zp.
     now rewrite Z.mul_1_l, mod_pow_mod.
   Qed.
 
-  Definition Zp (p : Z) :
-    prime p -> BoardroomField Z.
+  Definition boardroom_axioms (p : Z) :
+    prime p -> BoardroomAxioms Z.
   Proof.
     intros isprime.
     pose proof (prime_ge_2 _ isprime).
@@ -1518,8 +1641,8 @@ Module BigZp.
 
   Hint Rewrite BigZ.spec_modulo : zsimpl.
 
-  Definition BigZp (p : bigZ) :
-    prime [p] -> BoardroomField bigZ.
+  Definition boardroom_axioms (p : bigZ) :
+    prime [p] -> BoardroomAxioms bigZ.
   Proof.
     intros isprime.
     pose proof (prime_ge_2 _ isprime).

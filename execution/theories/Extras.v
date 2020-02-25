@@ -693,6 +693,88 @@ Proof.
   destruct l; cbn; auto.
 Qed.
 
+Lemma map_nth_alt {A B} n (l : list A) (f : A -> B) d1 d2 :
+  (n < length l)%nat ->
+  nth n (map f l) d1 = f (nth n l d2).
+Proof.
+  revert n.
+  induction l as [|x xs IH]; intros n nlt; cbn in *; try lia.
+  destruct n as [|n]; auto.
+  apply IH.
+  lia.
+Qed.
+
+Lemma sumZ_min_max {A} (f : A -> Z) l min max :
+  (forall a, In a l -> min <= f a <= max) ->
+  min * Z.of_nat (length l) <= sumZ f l <= max * Z.of_nat (length l).
+Proof.
+  intros all.
+  induction l as [|x xs IH].
+  - cbn.
+    lia.
+  - cbn.
+    unshelve epose proof (IH _) as IH.
+    + intros a ain.
+      apply all; right; auto.
+    + specialize (all x (or_introl eq_refl)).
+      lia.
+Qed.
+
+Lemma sumZ_min {A} (f : A -> Z) l min :
+  (forall a, In a l -> f a >= min) ->
+  min * Z.of_nat (length l) <= sumZ f l.
+Proof.
+  intros all.
+  induction l as [|x xs IH].
+  - cbn.
+    lia.
+  - cbn.
+    unshelve epose proof (IH _) as IH.
+    + intros a ain.
+      apply all; right; auto.
+    + specialize (all x (or_introl eq_refl)).
+      lia.
+Qed.
+
+Lemma sumZ_max {A} (f : A -> Z) l max :
+  (forall a, In a l -> f a <= max) ->
+  sumZ f l <= max * Z.of_nat (length l).
+Proof.
+  intros all.
+  induction l as [|x xs IH].
+  - cbn.
+    lia.
+  - cbn.
+    unshelve epose proof (IH _) as IH.
+    + intros a ain.
+      apply all; right; auto.
+    + specialize (all x (or_introl eq_refl)).
+      lia.
+Qed.
+
+Local Open Scope nat.
+Lemma sumnat_min_max {A} (f : A -> nat) l min max :
+  (forall a, In a l -> min <= f a <= max) ->
+  min * length l <= sumnat f l <= max * length l.
+Proof.
+  intros all.
+  induction l as [|x xs IH].
+  - cbn.
+    lia.
+  - cbn.
+    unshelve epose proof (IH _) as IH.
+    + intros a ain.
+      apply all; right; auto.
+    + specialize (all x (or_introl eq_refl)).
+      lia.
+Qed.
+
+Lemma flat_map_app {A B} (l l' : list A) (f : A -> list B) :
+  flat_map f (l ++ l') = flat_map f l ++ flat_map f l'.
+Proof.
+  now rewrite flat_map_concat_map, map_app, concat_app, <- !flat_map_concat_map.
+Qed.
+
 Definition large_modulus : Z :=
 32317006071311007300338913926423828248817941241140239112842009751400741706634354222619689417363569347117901737909704191754605873209195028853758986185622153212175412514901774520270235796078236248884246189477587641105928646099411723245426622522193230540919037680524235519125679715870117001058055877651038861847280257976054903569732561526167081339361799541336476559160368317896729073178384589680639671900977202194168647225871031411336429319536193471636533209717077448227988588565369208645296636077250268955505928362751121174096972998068410554359584866583291642136218231078990999448652468262416972035911852507045361090559.
 

@@ -17,12 +17,6 @@ Module FMap.
   Notation empty := stdpp.base.empty.
   Notation add := stdpp.base.insert.
   Notation find := stdpp.base.lookup.
-  Definition mem `{base.Lookup K V M} (i : K) (m : M) :=
-    match base.lookup i m with
-    | Some _ => true
-    | None => false
-    end.
-
   Notation remove := stdpp.base.delete.
   Notation elements := fin_maps.map_to_list.
   Notation size := stdpp.base.size.
@@ -95,6 +89,10 @@ Module FMap.
       add k v (remove k m) = add k v m.
     Proof. apply fin_maps.insert_delete. Qed.
 
+    Lemma add_add k v v' (m : FMap K V) :
+      add k v (add k v' m) = add k v m.
+    Proof. apply fin_maps.insert_insert. Qed.
+
     Lemma remove_add k v (m : FMap K V) :
       find k m = None ->
       remove k (add k v m) = m.
@@ -137,6 +135,49 @@ Module FMap.
           cbn.
           now rewrite IHm.
     Qed.
+
+    Lemma ind (P : FMap K V -> Prop) :
+      P empty ->
+      (forall k v m, find k m = None -> P m -> P (add k v m)) ->
+      forall m, P m.
+    Proof. apply fin_maps.map_ind. Qed.
+
+    Lemma size_empty : size (FMap.empty : FMap K V) = 0.
+    Proof. now rewrite fin_maps.map_size_empty. Qed.
+
+    Lemma size_add_new k v (m : FMap K V) :
+      FMap.find k m = None ->
+      size (FMap.add k v m) = S (size m).
+    Proof. apply fin_maps.map_size_insert. Qed.
+
+    Lemma size_add_existing k v (m : FMap K V) :
+      FMap.find k m <> None ->
+      size (FMap.add k v m) = size m.
+    Proof.
+      revert k v.
+      induction m using ind; intros kadd vadd find_some.
+      - rewrite find_empty in find_some.
+        congruence.
+      - destruct (stdpp.base.decide (k = kadd)) as [->|?].
+        + rewrite add_add.
+          now rewrite !size_add_new by auto.
+        + rewrite add_commute by auto.
+          rewrite find_add_ne in find_some by auto.
+          rewrite size_add_new.
+          * rewrite (IHm _ _ find_some).
+            now rewrite size_add_new by auto.
+          * now rewrite find_add_ne by auto.
+    Qed.
+
+    Lemma length_elements (m : FMap K V) : length (FMap.elements m) = size m.
+    Proof.
+      induction m using ind.
+      - now rewrite size_empty, elements_empty.
+      - rewrite elements_add, size_add_new by auto.
+        cbn.
+        now rewrite IHm.
+    Qed.
+
   End Theories.
 End FMap.
 
