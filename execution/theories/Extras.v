@@ -812,6 +812,107 @@ Proof.
         exists l'; tauto.
 Qed.
 
+Lemma find_app_first {A} (f : A -> bool) (l l' : list A) a :
+  find f l = Some a ->
+  find f (l ++ l') = Some a.
+Proof.
+  revert l'.
+  induction l as [|x xs IH]; intros l' find_some; cbn in *; try easy.
+  destruct (f x); [congruence|].
+  now rewrite IH by auto.
+Qed.
+
+Lemma find_app_last {A} (f : A -> bool) (l l' : list A) :
+  find f l = None ->
+  find f (l ++ l') = find f l'.
+Proof.
+  revert l'.
+  induction l as [|x xs IH]; intros l' find_none; cbn; auto.
+  cbn in find_none.
+  destruct (f x); [congruence|].
+  now rewrite IH by auto.
+Qed.
+
+Lemma find_none_perm {A} (f : A -> bool) l l' :
+  Permutation l l' ->
+  find f l = None <-> find f l' = None.
+Proof.
+  intros perm.
+  induction perm.
+  - cbn. tauto.
+  - cbn.
+    destruct (f x); tauto.
+  - cbn.
+    destruct (f x), (f y); split; intros; try congruence; tauto.
+  - tauto.
+Qed.
+
+Lemma seq_all_bound start len :
+  All (fun i => start <= i < start + len) (seq start len).
+Proof.
+  now apply All_Forall, Forall_forall, in_seq.
+Qed.
+
+Lemma flat_map_ext_in {B C} (f f' : B -> list C) (l : list B) :
+  (forall b, In b l -> f b = f' b) ->
+  flat_map f l = flat_map f' l.
+Proof.
+  intros.
+  rewrite !flat_map_concat_map.
+  apply f_equal.
+  now apply map_ext_in.
+Qed.
+
+Lemma NoDup_app {B} (l l' : list B) :
+  NoDup l ->
+  NoDup l' ->
+  (forall b, In b l -> ~In b l') ->
+  NoDup (l ++ l').
+Proof.
+  intros nodupl nodupl' all_nin.
+  induction l as [|b bs IH]; cbn; auto.
+  constructor.
+  - inversion nodupl; subst.
+    intros isin.
+    apply in_app_iff in isin.
+    destruct isin; [easy|].
+    apply (all_nin b); auto.
+    left; auto.
+  - apply IH.
+    + inversion nodupl; auto.
+    + intros b' inb'.
+      apply all_nin.
+      right; auto.
+Qed.
+
+Lemma NoDup_flat_map_disjoint {B C} (f : B -> list C) (l : list B) :
+  (forall b, In b l -> NoDup (f b)) ->
+  (forall b b', b <> b' -> In b l -> In b' l -> forall c, In c (f b) -> ~In c (f b')) ->
+  NoDup l ->
+  NoDup (flat_map f l).
+Proof.
+  intros all_disjoint all_pairwise_disjoint nodupb.
+  induction l as [|b bs IH]; cbn; [constructor|].
+  unshelve epose proof (IH _ _) as IH.
+  - intros a ain; apply all_disjoint; cbn; tauto.
+  - intros a a' aneq ain a'in.
+    apply all_pairwise_disjoint; cbn; tauto.
+  - cbn in *.
+    apply NoDup_app; auto.
+    + apply IH; inversion nodupb; auto.
+    + intros c cin cinmap.
+      rewrite flat_map_concat_map in cinmap.
+      apply In_concat in cinmap.
+      destruct cinmap as [inl [inll incl]].
+      apply in_map_iff in inll.
+      destruct inll as [x [<- inxbs]].
+      inversion nodupb; subst.
+      unshelve epose proof (in_NoDup_app x bs [b] inxbs _).
+      { rewrite (Permutation_app_comm bs [b]); cbn; auto. }
+      cbn in H.
+      unshelve epose proof (all_pairwise_disjoint b x _ _ _ c cin); tauto.
+Qed.
+
 Definition large_modulus : Z :=
 32317006071311007300338913926423828248817941241140239112842009751400741706634354222619689417363569347117901737909704191754605873209195028853758986185622153212175412514901774520270235796078236248884246189477587641105928646099411723245426622522193230540919037680524235519125679715870117001058055877651038861847280257976054903569732561526167081339361799541336476559160368317896729073178384589680639671900977202194168647225871031411336429319536193471636533209717077448227988588565369208645296636077250268955505928362751121174096972998068410554359584866583291642136218231078990999448652468262416972035911852507045361090559.
 

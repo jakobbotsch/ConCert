@@ -205,6 +205,11 @@ Module FMap.
             destruct H1; auto; congruence.
           * tauto.
     Qed.
+
+    Lemma list_to_map_flip (m : FMap K V) l :
+      Permutation (elements m) l ->
+      m = of_list l.
+    Proof. apply fin_maps.list_to_map_flip. Qed.
   End Theories.
 End FMap.
 
