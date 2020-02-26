@@ -271,14 +271,175 @@ Proof.
                       (FMap.elements voters)).
 *)
 
-Definition ordered_voters
-           (voters : FMap Address VoterInfo) : list (Address * VoterInfo) :=
+Definition ordered_voters_list (voters : list (Address * VoterInfo))
+  : list (Address * VoterInfo) :=
   flat_map (fun i =>
-              match find (fun '(k, vinf) => voter_index vinf =? i)
-                         (FMap.elements voters) with
+              match find (fun '(k, vinf) => voter_index vinf =? i) voters with
               | Some x => [x]
               | None => []
-              end) (seq 0 (FMap.size voters)).
+              end) (seq 0 (length voters)).
+
+Definition ordered_voters
+           (voters : FMap Address VoterInfo) : list (Address * VoterInfo) :=
+  ordered_voters_list (FMap.elements voters).
+
+Lemma ordered_voters_list_perm {voters voters' : list (Address * VoterInfo)} :
+  Permutation voters voters' ->
+  NoDup (map (fun '(k, vinf) => voter_index vinf) voters) ->
+  ordered_voters_list voters = ordered_voters_list voters'.
+Proof.
+  intros perm nodup.
+  unfold ordered_voters_list.
+  rewrite <- (Permutation_length perm).
+  induction (seq 0 (length (voters))) as [|i tl IH]; auto.
+  cbn.
+  rewrite IH.
+  f_equal.
+  clear IH.
+  induction perm.
+  - auto.
+  - destruct x as [k v]; cbn.
+    destruct (Nat.eqb_spec (voter_index v) i); auto.
+    apply IHperm.
+    cbn in nodup.
+    inversion nodup; auto.
+  - cbn in *.
+    destruct x as [k v], y as [k' v'].
+    destruct (Nat.eqb_spec (voter_index v') i), (Nat.eqb_spec (voter_index v) i); auto.
+    inversion_clear nodup; cbn in *.
+    contradiction H1.
+    left; congruence.
+  - rewrite IHperm1 by auto.
+    apply IHperm2.
+    now rewrite <- perm1.
+Qed.
+
+Lemma flat_map_ext_in {B C} (f f' : B -> list C) (l : list B) :
+  (forall b, In b l -> f b = f' b) ->
+  flat_map f l = flat_map f' l.
+Proof.
+  intros.
+  rewrite !flat_map_concat_map.
+  apply f_equal.
+  now apply map_ext_in.
+Qed.
+
+Lemma not_in_later (k : Address) (v : VoterInfo) f start count :
+  (forall i, start <= i < start + count -> ~ In (k, v) (f i)) ->
+  ~ In (k, v) (flat_map f (seq start count)).
+Proof.
+  intros all_notin isin.
+  rewrite flat_map_concat_map in isin.
+  apply In_concat in isin.
+  destruct isin as [insub [isinsub ?]].
+  apply in_map_iff in isinsub.
+  destruct isinsub as [i [eq ?]].
+  apply in_seq in H2.
+  specialize (all_notin i H2).
+  congruence.
+Qed.
+
+Lemma NoDup_app {B} (l l' : list B) :
+  NoDup l ->
+  NoDup l' ->
+  (forall b, In b l -> ~In b l') ->
+  NoDup (l ++ l').
+Proof.
+  intros nodupl nodupl' all_nin.
+  induction l as [|b bs IH]; cbn; auto.
+  constructor.
+  - inversion nodupl; subst.
+    intros isin.
+    apply in_app_iff in isin.
+    destruct isin; [easy|].
+    apply (all_nin b); auto.
+    left; auto.
+  - apply IH.
+    + inversion nodupl; auto.
+    + intros b' inb'.
+      apply all_nin.
+      right; auto.
+Qed.
+
+Lemma NoDup_app_comm {B} (bs bs' : list B) :
+  NoDup (bs ++ bs') <-> NoDup (bs' ++ bs).
+Proof.
+  intros.
+  now rewrite (Permutation_app_comm bs bs').
+Qed.
+
+Lemma NoDup_flat_map_disjoint {B C} (f : B -> list C) (l : list B) :
+  (forall b, In b l -> NoDup (f b)) ->
+  (forall b b', b <> b' -> In b l -> In b' l -> forall c, In c (f b) -> ~In c (f b')) ->
+  NoDup l ->
+  NoDup (flat_map f l).
+Proof.
+  intros all_disjoint all_pairwise_disjoint nodupb.
+  induction l as [|b bs IH]; cbn; [constructor|].
+  unshelve epose proof (IH _ _) as IH.
+  - intros a ain; apply all_disjoint; cbn; tauto.
+  - intros a a' aneq ain a'in.
+    apply all_pairwise_disjoint; cbn; tauto.
+  - cbn in *.
+    apply NoDup_app; auto.
+    + apply IH; inversion nodupb; auto.
+    + intros c cin cinmap.
+      rewrite flat_map_concat_map in cinmap.
+      apply In_concat in cinmap.
+      destruct cinmap as [inl [inll incl]].
+      apply in_map_iff in inll.
+      destruct inll as [x [<- inxbs]].
+      inversion nodupb; subst.
+      unshelve epose proof (in_NoDup_app x bs [b] inxbs _).
+      { apply NoDup_app_comm; cbn; auto. }
+      cbn in H1.
+      unshelve epose proof (all_pairwise_disjoint b x _ _ _ c cin); tauto.
+Qed.
+
+Lemma NoDup_ordered_voters voters :
+  NoDup (ordered_voters voters).
+Proof.
+  unfold ordered_voters, ordered_voters_list.
+  assert (forall {A} (x : A), NoDup [x]) by (constructor; cbn; try constructor; intuition).
+  apply NoDup_flat_map_disjoint.
+  - intros; destruct (find _ _); auto; constructor.
+  - intros b b' bneq bin b'in c inc.
+    destruct (find _ _) eqn:f1, (find (fun '(_, vinf) => voter_index vinf =? b') _) eqn:f2;
+      repeat
+        match goal with
+        | [H: find _ _ = _ |- _] => try apply find_some in H;
+                                      try apply find_none in H
+        end;
+      cbn in *.
+    + destruct p as [k v], p0 as [k' v'].
+      destruct f1 as [_ f1], f2 as [_ f2].
+      apply Nat.eqb_eq in f1.
+      apply Nat.eqb_eq in f2.
+      intros.
+      intuition.
+    + auto.
+    + auto.
+    + auto.
+  - apply seq_NoDup.
+Qed.
+
+Lemma In_ordered_voters_add addr voter addr_add voter_add voters :
+  FMap.find addr_add voters = None ->
+  voter_index voter_add = FMap.size voters ->
+  Permutation (ordered_voters voters) (FMap.elements voters) ->
+  In (addr, voter) (ordered_voters (FMap.add addr_add voter_add voters)) <->
+  (addr, voter) = (addr_add, voter_add) \/ In (addr, voter) (FMap.elements voters).
+Proof.
+  (*
+  intros find_none index is_perm.
+  split.
+  - intros isin.
+    induction voters using FMap.ind.
+    + unfold
+    unfold ordered_voters in isin.
+    rewrite FMap.size_add_new in isin by auto.
+   *)
+  Admitted.
 
 Lemma ordered_voters_add addr (voter : VoterInfo) (voters : FMap Address VoterInfo) :
   FMap.find addr voters = None ->
@@ -287,43 +448,42 @@ Lemma ordered_voters_add addr (voter : VoterInfo) (voters : FMap Address VoterIn
   Permutation (ordered_voters (FMap.add addr voter voters))
               (FMap.elements (FMap.add addr voter voters)).
 Proof.
-  intros is_new index is_perm.
-  rewrite FMap.elements_add by auto.
-  rewrite <- (FMap.length_elements voters) in *.
-  destruct (proj1 (Permutation_nth _ _ (addr, voter)) is_perm)
-    as [prev_len_eq [prev_map [prev_bfun [prev_binj prev_xin]]]].
-  (* prev_map allows us to go from FMap.elements voters -> ordered_voters voters *)
-  apply Permutation_nth with ((addr, voter)).
-  cbn in *.
-  assert (len_new: length (ordered_voters (FMap.add addr voter voters)) =
-                   S (length (ordered_voters voters))) by admit.
-  rewrite len_new.
-  split; [lia|].
-  (* we need permutation map from (addr, voter) :: FMap.elements -> ordered_voters (FMap.add ...) *)
-  exists (fun i => match i with
-                   | 0 => voter_index voter
-                   | S n => prev_map n
-                   end).
-  refine (conj _ (conj _ _)).
-  - intros i ilt.
-    destruct i; try lia.
-    pose proof (prev_bfun i ltac:(lia)).
-    lia.
-  - intros i j ilt jlt eq.
-    destruct i, j.
-    * auto.
-    * pose proof (prev_bfun j ltac:(lia)).
-      lia.
-    * pose proof (prev_bfun i ltac:(lia)).
-      lia.
-    * apply f_equal.
-      apply prev_binj; auto; lia.
-  - intros i ilt.
-    destruct i.
-    + admit.
-    + pose proof (prev_xin i ltac:(lia)).
-      admit.
-Admitted.
+  intros find_none index is_perm.
+  apply (NoDup_Permutation (NoDup_ordered_voters (FMap.add addr voter voters))
+                           (FMap.NoDup_elements (FMap.add addr voter voters))).
+  setoid_rewrite FMap.elements_add; auto.
+  intros [addr' voter'].
+  split.
+  - intros isin.
+    apply In_ordered_voters_add in isin; auto.
+    destruct isin; [left; congruence|right;tauto].
+  - intros isin.
+    apply In_ordered_voters_add; auto.
+    destruct isin; [left; congruence|right; tauto].
+Qed.
+
+Lemma ordered_voters_modify voters addr vold vnew :
+  FMap.find addr voters = Some vold ->
+  voter_index vold = voter_index vnew ->
+  Permutation (ordered_voters voters) (FMap.elements voters) ->
+  Permutation (ordered_voters (FMap.add addr vnew voters))
+              (FMap.elements (FMap.add addr vnew voters)).
+Proof.
+  intros find_some index perm.
+  apply (NoDup_Permutation (NoDup_ordered_voters (FMap.add addr vnew voters))
+                           (FMap.NoDup_elements (FMap.add addr vnew voters))).
+  intros x.
+  rewrite FMap.In_elements.
+  split.
+  - intros isin.
+    admit.
+  - intros find.
+    unfold ordered_voters.
+    unfold ordered_voters_list.
+
+  induction voters using FMap.ind.
+  - unfold ordered_voters.
+    induction
 
 Theorem boardroom_voting_correct
         bstate caddr (trace : ChainTrace empty_state bstate)

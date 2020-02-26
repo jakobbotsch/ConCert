@@ -142,8 +142,8 @@ Module FMap.
       forall m, P m.
     Proof. apply fin_maps.map_ind. Qed.
 
-    Lemma size_empty : size (FMap.empty : FMap K V) = 0.
-    Proof. now rewrite fin_maps.map_size_empty. Qed.
+    Lemma size_empty : size (@FMap.empty (FMap K V) _) = 0.
+    Proof. apply fin_maps.map_size_empty. Qed.
 
     Lemma size_add_new k v (m : FMap K V) :
       FMap.find k m = None ->
@@ -178,6 +178,33 @@ Module FMap.
         now rewrite IHm.
     Qed.
 
+    Lemma NoDup_elements (m : FMap K V) : NoDup (elements m).
+    Proof. apply base.NoDup_ListNoDup. apply fin_maps.NoDup_map_to_list. Qed.
+
+    Lemma In_elements p (m : FMap K V) :
+      In p (elements m) <-> find (fst p) m = Some (snd p).
+    Proof.
+      destruct p as [k v].
+      cbn in *.
+      induction m using ind.
+      - rewrite elements_empty, find_empty.
+        split; easy.
+      - rewrite elements_add by auto.
+        destruct (stdpp.base.decide (k = k0)) as [->|?].
+        + rewrite find_add.
+          cbn.
+          split; intros.
+          * destruct H1; try congruence.
+            apply IHm in H1.
+            congruence.
+          * left; congruence.
+        + cbn.
+          rewrite find_add_ne by auto.
+          split; intros.
+          * apply IHm.
+            destruct H1; auto; congruence.
+          * tauto.
+    Qed.
   End Theories.
 End FMap.
 
