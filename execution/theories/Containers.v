@@ -102,6 +102,11 @@ Module FMap.
       find k (remove k m) = None.
     Proof. apply fin_maps.lookup_delete. Qed.
 
+    Lemma find_remove_ne k k' (m : FMap K V) :
+      k <> k' ->
+      find k' (remove k m) = find k' m.
+    Proof. apply fin_maps.lookup_delete_ne. Qed.
+
     Lemma add_commute (k k' : K) (v v' : V) (m : FMap K V) :
       k <> k' ->
       FMap.add k v (FMap.add k' v' m) = FMap.add k' v' (FMap.add k v m).
@@ -111,6 +116,10 @@ Module FMap.
       find k m = Some v ->
       add k v m = m.
     Proof. apply fin_maps.insert_id. Qed.
+
+    Lemma remove_empty k :
+      remove k (@FMap.empty (FMap K V) _) = (@FMap.empty (FMap K V) _).
+    Proof. apply fin_maps.delete_empty. Qed.
 
     Lemma keys_already k v v' (m : FMap K V) :
       find k m = Some v ->
@@ -181,10 +190,9 @@ Module FMap.
     Lemma NoDup_elements (m : FMap K V) : NoDup (elements m).
     Proof. apply base.NoDup_ListNoDup. apply fin_maps.NoDup_map_to_list. Qed.
 
-    Lemma In_elements p (m : FMap K V) :
-      In p (elements m) <-> find (fst p) m = Some (snd p).
+    Lemma In_elements k v (m : FMap K V) :
+      In (k, v) (elements m) <-> find k m = Some v.
     Proof.
-      destruct p as [k v].
       cbn in *.
       induction m using ind.
       - rewrite elements_empty, find_empty.
@@ -210,6 +218,35 @@ Module FMap.
       Permutation (elements m) l ->
       m = of_list l.
     Proof. apply fin_maps.list_to_map_flip. Qed.
+
+    Lemma NoDup_elements_modify {A} k vold vnew (f : V -> A) (m : FMap K V) :
+      FMap.find k m = Some vold ->
+      f vold = f vnew ->
+      NoDup (map (fun '(_, v) => f v) (FMap.elements m)) ->
+      NoDup (map (fun '(_, v) => f v) (FMap.elements (FMap.add k vnew m))).
+    Proof.
+      intros find_prev fvold nodup.
+      rewrite <- (add_remove _ vnew).
+      rewrite <- (add_id k vold m) in nodup by auto.
+      rewrite <- (add_remove _ vold) in nodup.
+      rewrite elements_add by (apply find_remove).
+      rewrite elements_add in nodup by (apply find_remove).
+      inversion nodup; subst.
+      cbn.
+      rewrite <- fvold.
+      auto.
+    Qed.
+
+    Lemma In_elements_remove k v k' (m : FMap K V) :
+      In (k, v) (elements (remove k' m)) ->
+      In (k, v) (elements m).
+    Proof.
+      rewrite !In_elements.
+      intros.
+      destruct (stdpp.base.decide (k = k')) as [->|?].
+      - rewrite find_remove in H0; easy.
+      - rewrite find_remove_ne in H0; auto.
+    Qed.
   End Theories.
 End FMap.
 
@@ -217,7 +254,8 @@ Hint Resolve
      FMap.find_union_None
      FMap.find_union_Some_l
      FMap.find_add
-     FMap.find_add_ne : core.
+     FMap.find_add_ne
+     FMap.find_remove : core.
 
 Instance empty_set_eq_dec : stdpp.base.EqDecision Empty_set.
 Proof. decidable.solve_decision. Defined.

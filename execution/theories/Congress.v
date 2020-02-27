@@ -211,7 +211,7 @@ Definition receive
   : option (State * list ActionBody) :=
   let sender := ctx.(ctx_from) in
   let is_from_owner := (sender =? state.(owner))%address in
-  let is_from_member := FMap.mem sender state.(members) in
+  let is_from_member := if FMap.find sender state.(members) then true else false in
   let without_actions := option_map (fun new_state => (new_state, [])) in
   match maybe_msg, is_from_owner, is_from_member with
   | Some (transfer_ownership new_owner), true, _ =>
@@ -459,22 +459,22 @@ Proof.
   - (* remove_member *)
     destruct_address_eq; cbn in *; inversion receive; auto.
   - (* create_proposal *)
-    destruct (FMap.mem _ _); inversion receive.
+    destruct (FMap.find _ _); inversion receive.
     cbn.
     rewrite <- plus_n_O.
     apply add_proposal_cacts.
   - (* vote_for_proposal *)
-    destruct (FMap.mem _ _); try congruence.
+    destruct (FMap.find _ _); try congruence.
     destruct (vote_on_proposal _ _ _ _) eqn:vote; cbn -[vote_on_proposal] in *; try congruence.
     inversion receive; subst.
     erewrite vote_on_proposal_cacts_preserved; eauto.
   - (* vote_against_proposal *)
-    destruct (FMap.mem _ _); try congruence.
+    destruct (FMap.find _ _); try congruence.
     destruct (vote_on_proposal _ _ _ _) eqn:vote; cbn -[vote_on_proposal] in *; try congruence.
     inversion receive; subst.
     erewrite vote_on_proposal_cacts_preserved; eauto.
   - (* retract_vote *)
-    destruct (FMap.mem _ _); try congruence.
+    destruct (FMap.find _ _); try congruence.
     destruct (do_retract_vote _ _ _) eqn:retract; cbn -[do_retract_vote] in *; try congruence.
     inversion receive; subst.
     erewrite do_retract_vote_cacts_preserved; eauto.

@@ -686,7 +686,7 @@ Section WithBoardroomAxioms.
       reflexivity.
   Qed.
 
-  Instance prod_proper :
+  Global Instance prod_perm_proper :
     Proper (@Permutation A ==> elmeq) prod.
   Proof.
     intros l l' permeq.
@@ -700,7 +700,7 @@ Section WithBoardroomAxioms.
     - now rewrite IHpermeq1, IHpermeq2.
   Qed.
 
-  Instance bruteforce_tally_aux_proper :
+  Global Instance bruteforce_tally_aux_proper :
     Proper (eq ==> elmeq ==> eq) bruteforce_tally_aux.
   Proof.
     intros n ? <- p p' prodeq.
@@ -713,6 +713,13 @@ Section WithBoardroomAxioms.
       destruct (elmeq_dec _ _), (elmeq_dec _ _); auto.
       + rewrite prodeq in e; contradiction.
       + rewrite <- prodeq in e; contradiction.
+  Qed.
+
+  Global Instance bruteforce_tally_proper :
+    Proper (@Permutation A ==> eq) bruteforce_tally.
+  Proof.
+    unfold bruteforce_tally.
+    now intros ? ? <-.
   Qed.
 
   Lemma bruteforce_tally_aux_correct result max :

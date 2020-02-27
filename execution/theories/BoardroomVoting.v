@@ -18,6 +18,7 @@ Require Import Extras.
 Require Import BoardroomMath.
 Require Import Monads.
 Require Import Serializable.
+From ConCert.Execution Require Import Sorting.
 
 Import ListNotations.
 Import RecordSetNotations.
@@ -31,6 +32,7 @@ Context (modulus_prime : prime modulus).
 
 Instance zp : BoardroomAxioms Z := Zp.boardroom_axioms _ modulus_prime.
 Context {generator : Generator zp}.
+Context {discr_log : DiscreteLog zp generator}.
 
 (* Allow us to automatically derive Serializable instances *)
 Set Nonrecursive Elimination Schemes.
@@ -250,26 +252,11 @@ Qed.
 Opaque zp.
 Local Open Scope nat.
 
-(*
-Lemma bruteforce_correct
-      (voters : FMap Address VoterInfo)
-      (sks : Address -> Z)
-      (svs : Address -> bool)
-      (pks : list Z)
-      (n : nat) :
-  (forall (addr : Address) (inf : VoterInfo),
-    FMap.find addr voters = Some inf ->
-    nth (voter_index inf) pks 0%Z = compute_public_key (sks addr) /\
-    public_vote inf = compute_public_vote (reconstructed_key pks (voter_index inf))
-                                          (sks addr) (svs addr)) ->
-  bruteforce_tally (map public_vote (FMap.values voters)) = Some n ->
-  n = sumnat (fun party => if svs party then 1 else 0) (FMap.keys voters).
-Proof.
-  intros.
-  unfold FMap.keys, FMap.values in *.
-  set (parties := map (fun '(k, v) => (sks k, nth (voter_index v) pks 0%Z, svs k, public_vote v))
-                      (FMap.elements voters)).
-*)
+Definition find_voter voters i : list (Address * VoterInfo) :=
+  match find (fun '(k, vinf) => voter_index vinf =? i) voters with
+  | Some x => [x]
+  | None => []
+  end.
 
 Definition ordered_voters_list (voters : list (Address * VoterInfo))
   : list (Address * VoterInfo) :=
@@ -472,6 +459,55 @@ Proof.
   apply is_perm.
 Qed.
 
+Lemma find_NoDup_perm_voters addr vnew (voters : FMap Address VoterInfo) index :
+  NoDup (map (fun '(_, v) => voter_index v) (FMap.elements (FMap.add addr vnew voters))) ->
+  find (fun '(_, v) => voter_index v =? index) (FMap.elements (FMap.add addr vnew voters)) =
+  find (fun '(_, v) => voter_index v =? index)
+       ((addr, vnew) :: FMap.elements (FMap.remove addr voters)).
+Proof.
+  intros nodup.
+  rewrite <- FMap.add_remove in *.
+  unshelve epose proof (FMap.elements_add addr vnew (FMap.remove addr voters) _) as perm.
+  { apply FMap.find_remove. }
+  induction perm.
+  - auto.
+  - cbn.
+    destruct x as [k v].
+    destruct (Nat.eqb_spec (voter_index v) index); auto.
+    apply IHperm.
+    cbn in nodup; inversion nodup; auto.
+  - cbn.
+    destruct x as [k v], y as [k' v'].
+    destruct (Nat.eqb_spec (voter_index v) index),
+             (Nat.eqb_spec (voter_index v') index); cbn in *; auto.
+    inversion nodup; cbn in *.
+    intuition.
+  - rewrite IHperm1, IHperm2; auto.
+    now rewrite <- perm1.
+Qed.
+
+Lemma find_NoDup_elements k v (voters : FMap Address VoterInfo) :
+  In (k, v) (FMap.elements voters) ->
+  NoDup (map (fun '(_, v) => voter_index v) (FMap.elements voters)) ->
+  find (fun '(_, v') => voter_index v' =? voter_index v) (FMap.elements voters) =
+  Some (k, v).
+Proof.
+  intros isin nodup.
+  induction (FMap.elements voters) as [|[k' v'] xs IH]; cbn in *; auto; try contradiction.
+  inversion nodup; subst.
+  destruct isin as [eq|isin].
+  - inversion eq; subst; clear eq.
+    now rewrite Nat.eqb_refl.
+  - destruct (Nat.eqb_spec (voter_index v') (voter_index v)); auto.
+    specialize (IH isin H4).
+    contradiction H3.
+    rewrite e.
+    clear -isin.
+    induction xs as [|[k' v''] xs IH]; auto.
+    cbn in *.
+    destruct isin as [eq|isin]; [inversion eq; subst; cbn|]; tauto.
+Qed.
+
 Lemma ordered_voters_modify voters addr vold vnew :
   FMap.find addr voters = Some vold ->
   voter_index vold = voter_index vnew ->
@@ -480,44 +516,10 @@ Lemma ordered_voters_modify voters addr vold vnew :
               (FMap.elements (FMap.add addr vnew voters)).
 Proof.
   intros find_some index perm.
-  symmetry in perm.
-  unfold ordered_voters.
-  rewrite <- FMap.add_remove.
-  rewrite FMap.elements_add by (apply FMap.find_remove).
-  rewrite (FMap.list_to_map_flip _ _ perm).
-  unfold ordered_voters.
-  rewrite FMap.elements_add.
-  unfold ordered_voters.
-
-  revert addr vold vnew.
-  induction voters using FMap.ind; intros addr vold vnew find_some index perm.
-  - rewrite FMap.find_empty in find_some; congruence.
-  - unfold ordered_voters, ordered_voters_list.
-    destruct (address_eqb_spec addr k) as [->|?].
-    + rewrite FMap.add_add.
-      rewrite FMap.find_add in find_some.
-      inversion find_some; subst; clear find_some.
-      rewrite FMap.elements_add at 2 by auto.
-      admit.
-    + rewrite FMap.add_commute by auto.
-      rewrite FMap.find_add_ne in find_some by auto.
-      assert (FMap.find k (FMap.add addr vnew voters) = None)
-        by (now rewrite FMap.find_add_ne by auto).
-      rewrite FMap.elements_add at 2 by auto.
-      rewrite FMap.length_elements.
-      setoid_rewrite FMap.size_add_new; auto.
-      setoid_rewrite FMap.size_add_existing; try congruence.
-      cbn.
-      apply ordered_voters_add.
-      * auto.
-      * rewrite FMap.find_add in find_some.
-        inversion find_some; subst.
-
-
   unfold ordered_voters.
   apply (NoDup_Permutation (NoDup_ordered_voters (FMap.add addr vnew voters))
                            (FMap.NoDup_elements (FMap.add addr vnew voters))).
-  intros x.
+  intros [k v].
   unfold ordered_voters, ordered_voters_list.
   rewrite FMap.length_elements, FMap.size_add_existing, <- FMap.length_elements by congruence.
   split.
@@ -531,50 +533,180 @@ Proof.
     + subst.
       apply List.find_some in find.
       destruct find.
-      destruct p as [k v], x as [k' v'].
+      destruct p as [k' v'].
       cbn in H2.
       apply Nat.eqb_eq in H4.
       destruct H2; [|easy].
       now inversion H2; subst.
     + subst; cbn in *; easy.
-  -
+  - intros isin.
     rewrite flat_map_concat_map.
     apply In_concat.
-
-    exists [x].
+    exists [(k, v)].
     split; cbn; auto.
     apply in_map_iff.
-    exists (voter_index (snd x)).
+    exists (voter_index v).
+    pose proof (NoDup_ordered_voters_indices voters).
+    rewrite perm in H1.
+    pose proof (FMap.NoDup_elements_modify addr vold vnew _ _ find_some index H1).
+    rewrite find_NoDup_perm_voters by auto.
+    rewrite <- FMap.add_remove in isin, H2.
+    rewrite FMap.elements_add in isin, H2 by auto.
+    cbn in isin.
+    destruct isin as [eq|isin].
+    + cbn.
+      inversion eq; subst.
+      rewrite Nat.eqb_refl.
+      split; auto.
+      apply in_seq.
+      split; [lia|].
+      cbn.
+      rewrite <- index.
+      pose proof (proj2 (FMap.In_elements k vold _) find_some) as isin.
+      rewrite <- perm in isin.
+      pose proof (ordered_voters_list_index_bound (FMap.elements voters)) as allbound.
+      apply All_Forall in allbound.
+      rewrite Forall_forall in allbound.
+      specialize (allbound _ isin).
+      cbn in allbound.
+      lia.
+    + cbn in *.
+      destruct (Nat.eqb_spec (voter_index vnew) (voter_index v)).
+      * inversion H2; subst.
+        exfalso.
+        apply H5.
+        rewrite e.
+        clear -isin.
+        induction (FMap.elements (FMap.remove addr voters)); cbn in *; try easy.
+        destruct a.
+        destruct isin as [eq|isin]; [inversion eq; subst|]; tauto.
+      * inversion H2; subst.
+        rewrite (find_NoDup_elements k) by auto.
+        split; auto.
+        apply in_seq.
+        split; [lia|].
+        cbn.
+        apply FMap.In_elements_remove in isin.
+      rewrite <- perm in isin.
+      pose proof (ordered_voters_list_index_bound (FMap.elements voters)) as allbound.
+      apply All_Forall in allbound.
+      rewrite Forall_forall in allbound.
+      now specialize (allbound _ isin).
+Qed.
+
+(*
+Lemma nth_ordered_voters k v voters :
+  FMap.find k voters = Some v ->
+  nth_error (ordered_voters voters) (voter_index v) = Some (k, v).
+Proof.
+*)
+
+(*
+Lemma bruteforce_correct
+      (voters : FMap Address VoterInfo)
+      (sks : Address -> Z)
+      (svs : Address -> bool)
+      (pks : list Z) :
+  Permutation (ordered_voters voters) (FMap.elements voters) ->
+  (forall addr inf,
+      FMap.find addr voters = Some inf ->
+      voter_index inf < length pks /\
+      nth (voter_index inf) pks 0%Z = compute_public_key (sks addr) /\
+      public_vote inf = compute_public_vote (reconstructed_key pks (voter_index inf))
+                                            (sks addr)
+                                            (svs addr)) ->
+  bruteforce_tally (map public_vote (FMap.values voters)) =
+  Some (sumnat (fun party => if svs party then 1 else 0) (FMap.keys voters)).
+Proof.
+  intros perm all.
+  set (geti i := nth_error (ordered_voters voters) i).
+  set (sksi i := match geti i with
+                 | Some (k, _) => sks k
+                 | None => 0%Z
+                 end).
+  set (svsi i := match geti i with
+                 | Some (k, _) => svs k
+                 | None => false
+                 end).
+  assert (Permutation
+            (map public_vote (FMap.values voters))
+            (map (fun i => compute_public_vote
+                             (reconstructed_key pks i)
+                             (sksi i)
+                             (svsi i))
+                 (seq 0 (FMap.size voters)))).
+  {
+    unfold FMap.values.
+    rewrite <- perm.
+    unfold ordered_voters, ordered_voters_list in geti |- *.
+    rewrite <- FMap.length_elements.
+    revert geti sksi svsi.
+    generalize 0.
+    induction (length (FMap.elements voters)) as [|n IH]; [easy|].
+    intros i geti sksi svsi.
+    cbn.
     destruct (find _ _) eqn:find.
-    + apply List.find_some in find.
+    - apply find_some in find.
       destruct find.
       destruct p as [k v].
       apply Nat.eqb_eq in H2.
-    eexists.
-    split.
-    + apply in_map_iff.
-      eexists.
-      destruct (find _ _) eqn:find.
-      * split; [reflexivity|].
-    exists [x].
-    split; cbn; auto.
+      cbn.
+      apply FMap.In_elements in H1.
+      pose proof (all _ _ H1).
+      destruct H3 as [? [? ->]].
+      rewrite H2.
+      replace (sksi i) with (sks k); cycle 1.
+      + unset_all; subst.
+        cbn.
+        rewrite (find_NoDup_elements k v).
+        cbn.
+        unfold sksi, geti.
+        rewrite flat_map_concat_map.
+        cbn.
+      unfold sksi, svsi, geti.
+    generalize 0.
+    induction (
+  unfold FMap.keys, FMap.values.
+  rewrite <- perm.
+  rewrite sumnat_map.
+  set (geti i := nth_error (ordered_voters voters) i).
+  set (sksi i := match geti i with
+                 | Some (k, _) => sks k
+                 | None => 0%Z
+                 end).
+  set (svsi i := match geti i with
+                 | Some (k, _) => svs k
+                 | None => false
+                 end).
+  unshelve epose proof (bruteforce_tally_correct sksi pks svsi _ _ (length pks) _ _ _ _);
+    cycle 2.
+  - admit.
+  - admit.
+  - reflexivity.
+  - reflexivity.
+  -
+  rewrite sumnat_map, map_map.
+  unfold bruteforce_tally.
+  rewrite <- perm.
+  rewrite map_length.
+  rewrite <- perm.
+  apply bruteforce_tally_correct.
+  rewrite map_map.
+  rewrite (map_ext_in _ (fun '(_, v) => public_vote (
+  unfold FMap.keys, FMap.values in *.
+  set (parties := map (fun '(k, v) => (sks k, nth (voter_index v) pks 0%Z, svs k, public_vote v))
+                      (FMap.elements voters)).
+         (forall (addr : Address) (inf : VoterInfo),
+          FMap.find addr (registered_voters prev_state) = Some inf ->
+          voter_index inf < length (public_keys prev_state) /\
+          nth (voter_index inf) (public_keys prev_state) 0%Z = compute_public_key (sks addr) /\
+          (public_vote inf = 0%Z \/
+           public_vote inf =
+           compute_public_vote (reconstructed_key pks (voter_index inf)) (sks addr) (svs addr)))) /\
 
-    rewrite FMap.In_elements in isin.
-
-  unfold ordered_voters_list.
-  rewrite FMap.In_elements.
-  split.
-  - intros isin.
-    admit.
-  - intros find.
-    unfold ordered_voters.
-    unfold ordered_voters_list.
-
-  induction voters using FMap.ind.
-  - unfold ordered_voters.
-    induction
-   *)
-Admitted.
+Definition voter_by_index (m : FMap Address VoterInfo) i : option (Address * VoterInfo) :=
+  find (fun '(_, v) => voter_index v =? i) (FMap.elements m).
+*)
 
 Theorem boardroom_voting_correct
         bstate caddr (trace : ChainTrace empty_state bstate)

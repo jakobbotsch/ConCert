@@ -77,6 +77,15 @@ Instance sumnat_perm_proper {A : Type} :
   Proper (eq ==> Permutation (A:=A) ==> eq) sumnat.
 Proof. repeat intro. subst. now apply sumnat_permutation. Qed.
 
+Lemma sumnat_map {A B : Type} (f : A -> B) (g : B -> nat) (xs : list A) :
+  sumnat g (map f xs) =
+  sumnat (fun a => g (f a)) xs.
+Proof.
+  induction xs as [|hd tl IH]; auto.
+  cbn.
+  now rewrite IH.
+Qed.
+
 Lemma sumZ_permutation
       {A : Type} {f : A -> Z} {xs ys : list A}
       (perm_eq : Permutation xs ys) :
@@ -911,6 +920,36 @@ Proof.
       { rewrite (Permutation_app_comm bs [b]); cbn; auto. }
       cbn in H.
       unshelve epose proof (all_pairwise_disjoint b x _ _ _ c cin); tauto.
+Qed.
+
+Lemma find_NoDup_perm {A B} (f : A -> B) (g : B -> bool) (l l' : list A) :
+  NoDup (map f l) ->
+  Permutation l l' ->
+  (forall a a', In a l -> In a l' -> In a' l -> In a' l' ->
+                g (f a) = true ->
+                g (f a') = true -> f a = f a') ->
+  find (fun a => g (f a)) l = find (fun a => g (f a)) l'.
+Proof.
+  intros nodup perm inj.
+  induction perm.
+  - auto.
+  - cbn.
+    destruct (g (f x)); auto.
+    apply IHperm.
+    + inversion nodup; auto.
+    + intros a a' al al' a'l a'l' injects.
+      apply inj; cbn; tauto.
+  - cbn in *.
+    destruct (g (f x)) eqn:gfx, (g (f y)) eqn:gfy; auto.
+    inversion nodup; subst.
+    cbn in *.
+    unshelve epose proof (inj x y _ _ _ _ _); cbn; tauto.
+  - rewrite IHperm1, IHperm2; auto.
+    + now rewrite <- perm1.
+    + intros.
+      apply inj; auto; rewrite perm1; auto.
+    + intros.
+      apply inj; auto; rewrite <- perm2; auto.
 Qed.
 
 Definition large_modulus : Z :=
