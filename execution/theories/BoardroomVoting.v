@@ -274,17 +274,104 @@ Proof.
   now rewrite (Permutation_map _ perm), (Permutation_length perm).
 Qed.
 
-Lemma WellIndexed_ind
-      (P : forall v, WellIndexed v -> Prop) :
-  (forall winil, P [] winil) ->
-  (forall l x (wil : WellIndexed l) (wilx : WellIndexed (l ++ [x])),
-      P l wil ->
-      P (l ++ [x]) wilx) ->
-  forall l wi,
-    P l wi.
+Lemma WellIndexed_ind (P : list (Address * VoterInfo) -> Prop) :
+  P [] ->
+  (forall l x,
+      WellIndexed l ->
+      voter_index (snd x) = length l ->
+      P l ->
+      P (l ++ [x])) ->
+  forall l, WellIndexed l -> P l.
 Proof.
-  intros nil_case app_case l wi.
-  unfold WellIndexed in wi.
+  intros nil_case cons_case l.
+  unfold WellIndexed.
+  set (n := length l) at 0.
+  specialize (eq_refl : length l = n).
+  clearbody n.
+  revert l.
+  induction n; intros l eq perm.
+  - apply length_zero_iff_nil in eq.
+    subst l; auto.
+  - rewrite eq in *.
+    (*
+    pose proof (seq_NoDup (S n) 0).
+    pose proof (Permutation_NoDup (Permutation_sym perm) H1).
+    replace (S n) with (n + 1) in * by lia.
+    rewrite seq_app in *.
+    cbn in *.
+    assert (incl (seq 0 n) (seq 0 n ++ [n])).
+    { apply incl_appl, incl_refl. }
+    pose proof (NoDup_incl_reorganize _ _ (seq_NoDup n 0) H3).
+
+
+
+NoDup_incl_reorganize:
+  forall (A : Type) (l l' : list A),
+  NoDup l' -> incl l' l -> exists suf : list A, Permutation (l' ++ suf) l
+*)
+
+    replace (S n) with (n + 1) in perm by lia.
+    rewrite seq_app in perm.
+    cbn in perm.
+    assert (In n (seq 0 n ++ [n])).
+    { apply in_app_iff; right; cbn; auto. }
+    rewrite <- perm in H1.
+    apply In_nth_error in H1.
+    destruct H1 as [index nth_index].
+    assert (Permutation (map (fun '(_, vinf) => voter_index vinf)
+                             (firstn index l ++ skipn (S index) l))
+                        (seq 0 n)).
+    {
+
+      pose proof (seq_NoDup 0 n).
+      apply Permutation_NoDup'
+    assert (length (firstn index l ++ skipn (S index) l) = n).
+    {
+      rewrite app_length, firstn_length, skipn_length.
+      assert (index < length l).
+      {
+        replace (length l) with (length (map (fun '(_, vinf) => voter_index vinf) l))
+          by (now rewrite map_length).
+        apply nth_error_Some.
+        congruence.
+      }
+      lia.
+    }
+
+    specialize (IHn (firstn index l ++ skipn (S index) l) ltac:(auto)).
+    rewrite H1 in IHn.
+    + rewrite app_length, firstn_length, skipn_length.
+      assert (index < length l).
+      {
+        replace (length l) with (length (map (fun '(_, vinf) => voter_index vinf) l))
+          by (now rewrite map_length).
+        apply nth_error_Some.
+        congruence.
+      }
+      lia.
+    +
+    rewrite min_l by lia.
+      lia.
+    rewrite eq in IHn.
+    replace (index + (S n - S index)) with n in IHn by lia.
+    specialize (IHn eq_refl).
+    replace (Init.Nat.min index (length l)) with (length l) in IHn by lia.
+nth_error_Some: forall (A : Type) (l : list A) (n : nat), nth_error l n <> None <-> n < length l
+    apply in_map_iff in H1.
+    induction l as [|x xs IH]; auto.
+
+  induction (seq 0 (length l)) eqn:seq using List.rev_ind; intros perm.
+  - symmetry in perm.
+    apply Permutation_nil in perm.
+    apply map_eq_nil in perm.
+    subst l.
+    auto.
+  - cbn in wi.
+    assert (In start (start :: seq (S start) len)) by (left; auto).
+    rewrite <- wi in H1.
+    apply in_map_iff in H1.
+    destruct H1 as [[k v] ?].
+
   revert l wi.
   generalize 0.
   induction l using List.rev_ind; intros wil; auto.
