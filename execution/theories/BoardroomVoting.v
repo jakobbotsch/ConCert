@@ -252,11 +252,65 @@ Qed.
 Opaque zp.
 Local Open Scope nat.
 
+Definition WellIndexed (voters : list (Address * VoterInfo)) : Prop :=
+  Permutation (map (fun '(_, vinf) => voter_index vinf) voters)
+              (seq 0 (length voters)).
+
+Arguments WellIndexed !voters.
+
 Definition find_voter voters i : list (Address * VoterInfo) :=
   match find (fun '(k, vinf) => voter_index vinf =? i) voters with
   | Some x => [x]
   | None => []
   end.
+
+Arguments find_voter !voters.
+
+Instance WellIndexed_iff_proper :
+  Proper (Permutation ==> iff) WellIndexed.
+Proof.
+  unfold WellIndexed.
+  intros l l' perm.
+  now rewrite (Permutation_map _ perm), (Permutation_length perm).
+Qed.
+
+Lemma WellIndexed_ind
+      (P : forall v, WellIndexed v -> Prop) :
+  (forall winil, P [] winil) ->
+  (forall l x (wil : WellIndexed l) (wilx : WellIndexed (l ++ [x])),
+      P l wil ->
+      P (l ++ [x]) wilx) ->
+  forall l wi,
+    P l wi.
+Proof.
+  intros nil_case app_case l wi.
+  unfold WellIndexed in wi.
+  revert l wi.
+  generalize 0.
+  induction l using List.rev_ind; intros wil; auto.
+
+  apply (app_case l x).
+  apply app_case.
+  apply IHl.
+
+
+
+Lemma find_voter_perm voters voters' i :
+  WellIndexed voters ->
+  Permutation voters voters' ->
+  find_voter voters i = find_voter voters' i.
+Proof.
+  intros wellind perm.
+  induction perm.
+  - auto.
+  - unfold find_voter.
+    cbn.
+    destruct x as [k v].
+    destruct (Nat.eqb_spec (voter_index v) i); auto.
+    apply IHperm; auto.
+    unfold WellIndexed in wellind.
+    unfold
+  unfold find_voter.
 
 Definition ordered_voters_list (voters : list (Address * VoterInfo))
   : list (Address * VoterInfo) :=
