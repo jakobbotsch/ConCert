@@ -247,6 +247,16 @@ Module FMap.
       - rewrite find_remove in H0; easy.
       - rewrite find_remove_ne in H0; auto.
     Qed.
+
+    Lemma elements_add_existing k vold vnew (m : FMap K V) :
+      find k m = Some vold ->
+      Permutation (elements (add k vnew m)) ((k, vnew) :: elements (remove k m)).
+    Proof.
+      intros find.
+      rewrite <- add_remove.
+      rewrite elements_add; auto.
+      apply find_remove.
+    Qed.
   End Theories.
 End FMap.
 
