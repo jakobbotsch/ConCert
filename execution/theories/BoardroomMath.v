@@ -7,9 +7,10 @@ From Coq Require Import SetoidTactics.
 From Coq Require Import Field.
 From Coq Require Import ZArith.
 From Coq Require Import Znumtheory.
-From Coqprime Require Import Zp FGroup EGroup Cyclic.
+From Coqprime Require Import Zp.
 From Bignums Require Import BigZ.
 From Equations Require Import Equations.
+Import List.
 
 Require Import Extras.
 Import ListNotations.
@@ -762,17 +763,231 @@ Section WithBoardroomAxioms.
     destruct (svs x); lia.
   Qed.
 
-  Lemma bruteforce_tally_correct sks pks svs pvs pvs_passed count :
-    Z.of_nat count < order - 1 ->
-    pks = map (fun i => compute_public_key (sks i)) (seq 0 count) ->
-    pvs = map (fun i => compute_public_vote (reconstructed_key pks i)
-                                            (sks i)
-                                            (svs i))
-              (seq 0 count) ->
-    Permutation pvs pvs_passed ->
-    bruteforce_tally pvs_passed =
-    Some (sumnat (fun i => if svs i then 1 else 0)%nat (seq 0 count)).
+  Lemma bruteforce_tally_correct
+        {B}
+        (bs : list B)
+        (index : B -> nat)
+        (sks : B -> Z)
+        (pks : B -> A)
+        (svs : B -> bool)
+        (pvs : B -> A) :
+    Z.of_nat (length bs) < order - 1 ->
+    Permutation (map index bs) (seq 0 (length bs)) ->
+    (forall b, In b bs -> pks b = compute_public_key (sks b)) ->
+    (forall b, In b bs -> pvs b = compute_public_vote
+                                    (reconstructed_key (map pks bs) (index b))
+                                    (sks b)
+                                    (svs b)) ->
+    bruteforce_tally (map pvs bs) =
+    Some (sumnat (fun b => if svs b then 1 else 0)%nat bs).
   Proof.
+    intros countlt perm pks_sks pvs_svs.
+    set (geti i := find (fun b => index b =? i)%nat bs).
+    set (sks_list := map (fun i => match geti i with
+                                   | Some x => sks x
+                                   | None => 0%Z
+                                   end)
+                         (seq 0 (length bs))).
+    set (svsi i := match geti i with
+                   | Some x => svs x
+                   | None => false
+                   end).
+    pose proof (mul_public_votes sks_list svsi).
+    assert (geti_i: forall b i,
+               In b bs ->
+               index b = i ->
+               geti i = Some b).
+    {
+      clear -perm.
+      intros b i isin index_eq.
+      pose proof (seq_NoDup (length bs) 0).
+      rewrite <- perm in H.
+      clear perm.
+      subst geti.
+      cbn.
+      induction bs as [|b' bs IH]; cbn in *; try easy.
+      destruct isin as [<-|?].
+      - now rewrite index_eq, Nat.eqb_refl.
+      - inversion H; subst.
+        destruct (Nat.eqb_spec (index b') (index b)).
+        + rewrite e in H.
+          apply (in_map index) in H0.
+          rewrite <- e in H0.
+          contradiction.
+        + inversion H; apply IH; auto.
+    }
+
+    assert (map_on_bs:
+              forall {C} (f : B -> C) (def : C),
+                map f bs = map (fun i => match geti i with
+                                         | Some b => f b
+                                         | None => def
+                                         end) (seq 0 (length bs))).
+    {
+      clear -geti_i.
+      intros C f def.
+      apply map_eq_2; [now rewrite seq_length|].
+      intros i b i' nthb nthi.
+      rewrite geti_i with (b := b).
+      induction bs at 1 2.
+      subst geti.
+      cbn in *.
+      generalize 0%nat as start.
+      induction bs as [|b bs IH]; cbn; auto; intros start.
+      subst geti; cbn in *.
+      destruct (Nat.eqb_spec (index b) start).
+      - apply f_equal.
+        rewrite IH with (start := start); cycle 1.
+        + intros.
+          apply geti_i.
+
+      cbn in
+      pose proof (seq_NoDup (length bs) 0).
+      rewrite <- perm in H.
+      clear perm.
+      generalize 0%nat as start.
+      induction bs as [|b bs IH]; cbn; intros start; auto.
+      destruct (Nat.eqb_spec (index b) start).
+      - apply f_equal.
+
+      transitivity (map (fun b => match geti (index b) with
+                                  | Some b => f b
+                                  | None => def
+                                  end) bs).
+      - induction bs as [|b bs IH]; cbn; auto.
+        rewrite Nat.eqb_refl.
+        apply f_equal.
+      pose proof (
+      induction bs
+      rewrite <- map_map
+
+    assert (Permutation
+              (map (fun i : nat =>
+                      compute_public_vote
+                        (reconstructed_key
+                           (map compute_public_key sks_list) i)
+                        (nth i sks_list 0%Z) (svsi i))
+                   (seq 0 (length sks_list)))
+              (map pvs bs))%nat.
+    {
+      symmetry.
+      transitivity (map (fun i => match geti i with
+                                  | Some x => pvs x
+                                  | None => 0
+                                  end) (seq 0 (length bs))); cycle 1.
+      {
+        match goal with
+        | [|- Permutation ?l ?l'] => enough (l = l') as eq by (now rewrite eq)
+        end.
+        unfold sks_list.
+        rewrite map_length, seq_length.
+        apply map_ext_in.
+        intros i iin.
+        rewrite <- perm in iin.
+        apply in_map_iff in iin.
+        destruct iin as [b [bindex bin]].
+        rewrite geti_i with (b := b) by auto.
+        rewrite pvs_svs by auto.
+        f_equal.
+        - rewrite bindex.
+          f_equal.
+          rewrite map_map.
+          apply map_ext_in.
+        o
+        rewrite geti_i with
+        revert geti_i.
+        generalize 0%nat as start.
+        clear.
+        induction bs as [|b bs IH]; intros start geti_i; auto.
+        cbn.
+
+(map (fun i : nat => match geti i with
+                         | Some x => pvs x
+                         | None => 0
+                         end) (seq 0 (length bs)))
+
+        erewrite map_ext_in; cycle 1.
+        - intros i iin.
+          rewrite <- perm in iin.
+          apply in_map_iff in iin.
+          destruct iin as [b [bindex bin]].
+          rewrite geti_i with (b := b) by auto.
+          rewrite pvs_svs by auto.
+
+          [g]: exact (nth
+      -
+      unfold sks_list.
+      rewrite map_length, seq_length.
+
+    }
+
+    rewrite <- H0.
+    unfold bruteforce_tally.
+    rewrite map_length, seq_length.
+    rewrite mul_public_votes.
+    rewrite <- (sumnat_map svs (fun sv => if sv then 1%nat else 0%nat)).
+    enough (Permutation (map svs bs) (map svsi (seq 0 (length sks_list)))).
+    {
+      rewrite H1.
+      rewrite sumnat_map.
+      rewrite sumZ_sumnat_votes.
+      unfold sks_list.
+      rewrite map_length, seq_length.
+      rewrite bruteforce_tally_aux_correct; auto.
+      rewrite <- Nat.mul_1_l.
+      rewrite <- (seq_length (length bs) 0) at 2.
+      apply sumnat_max.
+      intros i iin.
+      destruct (svsi i); lia.
+    }
+    unfold sks_list.
+    rewrite map_length, !seq_length.
+    rewrite <- perm.
+    pose proof (seq_NoDup (length bs) 0).
+    rewrite <- perm in H1.
+    clear -H1.
+    induction bs as [|b bs IH]; auto.
+    subst geti svsi; cbn in *.
+    rewrite Nat.eqb_refl.
+    inversion H1; subst.
+    rewrite (map_ext_in _ (fun i => match find (fun b => (index b =? i)%nat) bs with
+                                    | Some x => svs x
+                                    | None => false
+                                    end)); cycle 1.
+    {
+      intros a ain.
+      destruct (Nat.eqb_spec (index b) a); auto.
+      subst a; contradiction.
+    }
+    apply Permutation_cons; auto.
+
+    cbn.
+    cbn in *.
+    unf
+    rewrite IH.
+    cbn.
+    subst geti svsi; cbn in *.
+    rewrite Nat.eqb_refl.
+    rewrite <- IH.
+    unset_all; cbn in *.
+    unfold svsi.
+    cbn.
+    indu
+      cbn.
+    rewrite map_map.
+
+
+      apply (@sumnat_max A).
+        rewi
+      unshelve epose proof
+               (sumnat_min_max (fun i => if svs i then 1 else 0) (seq 0 count) 0 1 _)%nat.
+      { intros; cbn; destruct (svs a); lia. }
+      rewrite map_length, seq_length in *.
+      rewrite Nat.mul_0_l, Nat.mul_1_l in *.
+      rewrite sumZ_sumnat_votes.
+      rewrite bruteforce_tally_aux_correct
+      rewrite (map_ext_in _ pvs
+    unfold bruteforce_tally.
     unfold bruteforce_tally.
     intros countlt -> -> <-.
     pose proof order_ge_2.

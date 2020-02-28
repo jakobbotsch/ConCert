@@ -585,23 +585,24 @@ Proof.
   now replace (split_len + (len - split_len))%nat with len by lia.
 Qed.
 
+Lemma sumZ_sumZ_swap {A B} (f : A -> B -> Z) (xs : list A) (ys : list B) :
+  sumZ (fun a => sumZ (f a) (ys)) xs =
+  sumZ (fun b => sumZ (fun a => f a b) xs) ys.
+Proof.
+  revert ys.
+  induction xs as [|x xs IH]; intros ys; cbn.
+  - now rewrite sumZ_zero.
+  - rewrite IH.
+    clear IH.
+    induction ys as [|y ys IH]; cbn; auto.
+    rewrite <- IH.
+    lia.
+Qed.
+
 Lemma sumZ_sumZ_seq_swap (f : nat -> nat -> Z) start1 len1 start2 len2 :
   sumZ (fun i => sumZ (f i) (seq start2 len2)) (seq start1 len1) =
   sumZ (fun j => sumZ (fun i => f i j) (seq start1 len1)) (seq start2 len2).
-Proof.
-  revert start1 start2 len2.
-  induction len1 as [|len1 IH].
-  - intros start1 start2 len2.
-    cbn.
-    now rewrite sumZ_zero.
-  - intros start1 start2 len2.
-    cbn.
-    rewrite IH.
-    induction len2 as [|len2 IH2]; auto.
-    rewrite !sumZ_seq_S.
-    rewrite <- IH2.
-    lia.
-Qed.
+Proof. apply sumZ_sumZ_swap. Qed.
 
 Lemma All_Forall {A} (l : list A) f :
   All f l <-> Forall f l.
@@ -765,6 +766,22 @@ Local Open Scope nat.
 Lemma sumnat_min_max {A} (f : A -> nat) l min max :
   (forall a, In a l -> min <= f a <= max) ->
   min * length l <= sumnat f l <= max * length l.
+Proof.
+  intros all.
+  induction l as [|x xs IH].
+  - cbn.
+    lia.
+  - cbn.
+    unshelve epose proof (IH _) as IH.
+    + intros a ain.
+      apply all; right; auto.
+    + specialize (all x (or_introl eq_refl)).
+      lia.
+Qed.
+
+Lemma sumnat_max {A} (f : A -> nat) l max :
+  (forall a, In a l -> f a <= max) ->
+  sumnat f l <= max * length l.
 Proof.
   intros all.
   induction l as [|x xs IH].
@@ -962,6 +979,59 @@ Proof.
     specialize (IH xs).
     cbn.
     lia.
+Qed.
+
+Lemma map_option_flat_map {A B} (f : A -> option B) (l : list A) :
+  map_option f l =
+  flat_map (fun a => match f a with
+                     | Some x => [x]
+                     | None => []
+                     end) l.
+Proof.
+  induction l as [|x xs IH]; auto.
+  cbn.
+  destruct (f x); auto.
+  cbn.
+  apply f_equal; auto.
+Qed.
+
+Lemma map_option_app {A B} (f : A -> option B) (l l' : list A) :
+  map_option f (l ++ l') = map_option f l ++ map_option f l'.
+Proof.
+  now rewrite
+      map_option_flat_map,
+      flat_map_concat_map,
+      map_app,
+      concat_app,
+      <- !flat_map_concat_map,
+      <- !map_option_flat_map.
+Qed.
+
+Lemma find_map {A B} (f : A -> B) g l :
+  find g (map f l) = option_map f (find (fun a => g (f a)) l).
+Proof.
+  induction l as [|x xs IH]; auto.
+  cbn.
+  rewrite IH.
+  destruct (g (f x)); auto.
+Qed.
+
+Lemma map_eq_2 {A B C} (f : A -> C) (g : B -> C) (xs : list A) (ys : list B) :
+  length xs = length ys ->
+  (forall i a b, nth_error xs i = Some a -> nth_error ys i = Some b -> f a = g b) ->
+  map f xs = map g ys.
+Proof.
+  revert ys.
+  induction xs as [|x xs IH]; intros ys len_xs all_eq.
+  - destruct ys; cbn in *; auto; lia.
+  - cbn.
+    destruct ys as [|y ys]; cbn in *; try lia.
+    rewrite (all_eq 0 x y); cbn; auto.
+    apply f_equal.
+    apply IH.
+    + lia.
+    + intros i a b ntha nthb.
+      apply all_eq with (S i); cbn; auto.
 Qed.
 
 (*

@@ -162,7 +162,11 @@ Ltac solve_contract_proper :=
 Program Definition contract : Contract Setup Msg State :=
   build_contract init _ receive _.
 Next Obligation. repeat intro; solve_contract_proper. Qed.
-Next Obligation. repeat intro; solve_contract_proper. Qed.
+Next Obligation.
+  repeat intro; solve_contract_proper.
+  - now rewrite (current_slot_eq x y) by auto.
+  - now rewrite (account_balance_eq x y) by auto.
+Qed.
 
 Section Theories.
   Lemma no_self_calls bstate caddr :
@@ -351,8 +355,6 @@ Section Theories.
         destruct_match eqn:amount_mod_2 in amount_even; try congruence; auto.
         destruct (Z.compare_spec (ctx_amount ctx mod 2) 0); auto; try congruence.
       }
-      From Coq Require Import PreOmega.Z.
-      PreOmega.Z.to_euclidean_division_equations.
       rewrite <- (Z_div_exact_2 (ctx_amount ctx) 2) by (auto; lia).
       split; auto.
       instantiate (DeployFacts := fun _ ctx => ctx_amount ctx >= 0);
@@ -482,7 +484,7 @@ Section Theories.
               lia.
             ++ (* Seller still has more to withdraw, next_step is still withdrawals *)
               replace (match seller_withdrawable prev_state with _ => _ end)
-                with (prev_state <| buyer_withdrawable ::= constructor 0 |>)
+                with (prev_state <| buyer_withdrawable ::= fun _ => 0 |>)
                 by (destruct_match; cbn in *; try congruence).
               cbn.
               rewrite prev_next_step.
@@ -517,7 +519,7 @@ Section Theories.
               lia.
             ++ (* Buyer still has more to withdraw, next_step is still withdrawals *)
               replace (match buyer_withdrawable prev_state with _ => _ end)
-                with (prev_state <| seller_withdrawable ::= constructor 0 |>)
+                with (prev_state <| seller_withdrawable ::= fun _ => 0 |>)
                 by (destruct_match; cbn in *; try congruence).
               cbn.
               rewrite prev_next_step.
