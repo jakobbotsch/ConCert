@@ -361,6 +361,30 @@ Fixpoint zip {X Y} (xs : list X) (ys : list Y) : list (X * Y) :=
   | _, _ => []
   end.
 
+Lemma zip_app {X Y} (xs xs' : list X) (ys ys' : list Y) :
+  length xs = length ys ->
+  zip (xs ++ xs') (ys ++ ys') = zip xs ys ++ zip xs' ys'.
+Proof.
+  intros len_xs.
+  revert xs' ys ys' len_xs.
+  induction xs as [|x xs IH]; intros xs' ys ys' len_xs; cbn.
+  - destruct ys; cbn in *; congruence.
+  - destruct ys as [|y ys]; cbn in *; try lia.
+    apply f_equal.
+    apply IH; lia.
+Qed.
+
+Lemma zip_map {A B C D} (f : A -> B) (g : C -> D) (xs : list A) (ys : list C) :
+  zip (map f xs) (map g ys) =
+  map (fun '(x, y) => (f x, g y)) (zip xs ys).
+Proof.
+  revert f g ys.
+  induction xs as [|x xs IH]; intros f g ys; cbn; auto.
+  destruct ys as [|y ys]; cbn; auto.
+  f_equal.
+  auto.
+Qed.
+
 Lemma nth_snoc {A} (l : list A) (a b : A)  :
   nth (length l) (l ++ [a]) b = a.
 Proof. induction l; auto. Qed.
@@ -396,6 +420,28 @@ Fixpoint All {A} (f : A -> Prop) (l : list A) : Prop :=
   | [] => True
   | x :: xs => f x /\ All f xs
   end.
+
+Lemma All_app {A} f (l l' : list A) :
+  All f (l ++ l') <-> All f l /\ All f l'.
+Proof.
+  revert l'.
+  induction l as [|x xs IH]; intros l'; cbn; firstorder.
+Qed.
+
+Lemma All_map {A B} (g : B -> Prop) (f : A -> B) (l : list A) :
+  All g (map f l) <-> All (fun a => g (f a)) l.
+Proof.
+  induction l as [|x xs IH]; cbn; [tauto|].
+  tauto.
+Qed.
+
+Lemma All_ext_in {A} (f g : A -> Prop) (l : list A) :
+  All f l ->
+  (forall a, In a l -> f a -> g a) ->
+  All g l.
+Proof.
+  induction l as [|x xs IH]; intros all fall; cbn in *; intuition.
+Qed.
 
 Local Open Scope nat.
 Lemma sumZ_seq_n (f : nat -> Z) n len :

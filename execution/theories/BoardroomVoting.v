@@ -210,7 +210,10 @@ Definition make_vote_msg (pks : list Z) (my_index : nat) (sk : Z) (sv : bool) : 
 
 Section Theories.
 
-Fixpoint CallAssumptions
+(* For correctness we assume that all signups and vote messages were
+   created using the make_signup_msg and make_vote_msg functions from
+   the contract *)
+Fixpoint MsgAssumption
          (pks : list Z)
          (index : Address -> nat)
          (sks : Address -> Z)
@@ -224,21 +227,27 @@ Fixpoint CallAssumptions
     | Some (submit_vote _ _ as m) =>
       m = make_vote_msg pks (index caller) (sks caller) (svs caller)
     | _ => True
-    end /\ CallAssumptions pks index sks svs calls
+    end /\ MsgAssumption pks index sks svs calls
   | [] => True
   end.
 
-Definition IndexAssumptions (voters : FMap Address VoterInfo) index : Prop :=
-  forall addr inf,
-    FMap.find addr voters = Some inf ->
-    voter_index inf = index addr.
+Definition signups (calls : list (ContractCallInfo Msg)) : list (Address * Z) :=
+  (* reverse the signups since the calls will have the last one at the head *)
+  rev (map_option (fun call => match Blockchain.call_msg call with
+                               | Some (signup pk) => Some (Blockchain.call_from call, pk)
+                               | _ => None
+                               end) calls).
 
-Definition num_signups (calls : list (ContractCallInfo Msg)) :=
-  sumnat (fun cc => match Blockchain.call_msg cc with
-                    | Some (signup _) => 1
-                    | _ => 0
-                    end)%nat calls.
+(* The index map and public keys list provided also needs to match the
+   order in which parties signed up in the contract. *)
+Definition SignupOrderAssumption
+           (pks : list Z)
+           (index : Address -> nat)
+           (calls : list (ContractCallInfo Msg)) : Prop :=
+  All (fun '((addr, pk), i) => index addr = i /\ nth_error pks i = Some pk)
+      (zip (signups calls) (seq 0 (length (signups calls)))).
 
+(*
 Lemma voter_info_update (voters : FMap Address VoterInfo) index addr vi_before vi_after :
   IndexAssumptions (FMap.add addr vi_after voters) index ->
   FMap.find addr voters = Some vi_before ->
@@ -256,6 +265,7 @@ Proof.
   - apply index_assum.
     rewrite FMap.find_add_ne by auto; congruence.
 Qed.
+*)
 
 Opaque zp.
 Local Open Scope nat.
@@ -323,6 +333,34 @@ Proof.
   now rewrite index.
 Qed.
 
+Lemma all_signups pks index calls :
+  SignupOrderAssumption pks index calls ->
+  length (signups calls) = length pks ->
+  map snd (signups calls) = pks.
+Proof.
+  intros order len_signups.
+  unfold SignupOrderAssumption in order.
+  revert index pks len_signups order.
+  induction (signups calls) as [|[addr pk] xs IH]; intros index pks len_signups order.
+  - destruct pks; cbn in *; congruence.
+  - cbn in *.
+    destruct pks as [|pk' pks]; cbn in *; try lia.
+    destruct order as [[index_eq nth_eq] all].
+    f_equal; try congruence.
+    apply (IH (fun addr => index addr - 1)); try lia.
+    clear -all.
+    rewrite <- (map_id xs) in all at 1.
+    rewrite <- seq_shift in all.
+    rewrite zip_map in all.
+    apply All_map in all.
+    apply (All_ext_in _ _ _ all).
+    intros.
+    destruct a, p.
+    cbn in *.
+    split; [|tauto].
+    destruct H0; lia.
+Qed.
+
 Theorem boardroom_voting_correct_strong
         bstate caddr (trace : ChainTrace empty_state bstate)
         pks index sks svs :
@@ -340,15 +378,14 @@ Theorem boardroom_voting_correct_strong
        result cstate = None) /\
 
       length (public_keys cstate) = FMap.size (registered_voters cstate) /\
-      length (public_keys cstate) = num_signups inc_calls /\
+      public_keys cstate = map snd (signups inc_calls) /\
 
       (Z.of_nat (length (public_keys cstate)) < modulus - 1)%Z /\
 
-      (CallAssumptions pks index sks svs inc_calls ->
-       IndexAssumptions (registered_voters cstate) index ->
+      (MsgAssumption pks index sks svs inc_calls ->
+       SignupOrderAssumption pks index inc_calls ->
        (finish_registration_by (setup cstate) < Blockchain.current_slot bstate ->
-        num_signups inc_calls = length pks) ->
-       firstn (length (public_keys cstate)) pks = public_keys cstate ->
+        length pks = length (signups inc_calls)) ->
 
        Permutation (map (fun '(_, v) => voter_index v)
                         (FMap.elements (registered_voters cstate)))
@@ -357,6 +394,7 @@ Theorem boardroom_voting_correct_strong
        (forall addr inf,
            FMap.find addr (registered_voters cstate) = Some inf ->
            voter_index inf < length (public_keys cstate) /\
+           voter_index inf = index addr /\
            nth_error (public_keys cstate) (voter_index inf) =
            Some (compute_public_key (sks addr)) /\
            (public_vote inf = 0%Z \/
@@ -384,7 +422,7 @@ Proof.
     split; auto.
     split; [symmetry; apply FMap.size_empty|].
     pose proof (prime_ge_2 _ modulus_prime).
-    split; [lia|].
+    split; [auto|].
     split; [lia|].
     intros _ index_assum pks_assum.
     rewrite FMap.elements_empty.
@@ -412,21 +450,20 @@ Proof.
       apply Z.ltb_lt in lt.
       rewrite app_length in *.
       cbn.
-      fold (num_signups prev_inc_calls).
-      split; [destruct_and_split; lia|].
+      fold (signups prev_inc_calls).
+      rewrite app_length, map_app; cbn.
+      split; [destruct_and_split; congruence|].
       split; [lia|].
-      intros [signup_assum call_assum] index_assum num_signups_assum pks_assum.
-      destruct IH as [reg_lt [cur_lt [_ [_ [_ IH]]]]].
-      unshelve epose proof (IH _ _ _ _) as IH.
+      intros [signup_assum msg_assum] order_assum num_signups_assum.
+      destruct IH as [reg_lt [cur_lt [_ [pks_signups [_ IH]]]]].
+      unshelve epose proof (IH _ _ _) as IH.
       * auto.
-      * intros addr' inf' find.
-        apply index_assum.
-        destruct (address_eqb_spec addr' (ctx_from ctx)) as [->|].
-        -- destruct (FMap.find _ _); congruence.
-        -- rewrite FMap.find_add_ne; auto.
+      * rewrite seq_app in order_assum.
+        rewrite zip_app in order_assum by (now rewrite seq_length).
+        apply All_app in order_assum.
+        tauto.
       * intros.
         lia.
-      * apply firstn_app_invl with (l2 := [pk]); auto.
       * split.
         {
           destruct IH as [perm _].
@@ -450,7 +487,15 @@ Proof.
            cbn.
            unfold make_signup_msg in signup_assum.
            rewrite nth_error_snoc.
-           repeat split; auto; try congruence; lia.
+           rewrite seq_app, zip_app in order_assum by (now rewrite seq_length).
+           apply All_app in order_assum.
+           cbn in order_assum.
+           destruct order_assum as [_ []].
+           split; [lia|].
+           rewrite pks_signups, map_length.
+           split; [symmetry; tauto|].
+           split; [congruence|].
+           left; auto.
         -- rewrite FMap.find_add_ne in find_add by auto.
            destruct IH as [_ [IH _]].
            specialize (IH _ _ find_add).
@@ -467,13 +512,9 @@ Proof.
       { rewrite FMap.size_add_existing by congruence; tauto. }
       split; [tauto|].
       split; [tauto|].
-      intros [_ call_assum] index_assum num_signups_assum pks_assum.
+      intros [_ msg_assum] order_assum num_signups_assum.
       destruct IH as [_ [_ [len_pks [_ [_ IH]]]]].
-      unshelve epose proof (IH call_assum _ num_signups_assum pks_assum) as IH.
-      {
-        apply (voter_info_update _ _ (ctx_from ctx) v (v<|vote_hash := hash|>));
-          auto.
-      }
+      specialize (IH msg_assum order_assum num_signups_assum).
       setoid_rewrite (FMap.keys_already _ _ _ _ found).
       split.
       {
@@ -503,18 +544,9 @@ Proof.
       split; [tauto|].
       split; [tauto|].
       split; [tauto|].
-      intros [vote_assum call_assum] index_assum num_signups_assum pks_assum.
+      intros [vote_assum msg_assum] order_assum num_signups_assum.
       destruct IH as [_ [_ [len_pks [_ [_ IH]]]]].
-      pose proof (voter_info_update
-                    (registered_voters prev_state)
-                    index
-                    (ctx_from ctx)
-                    v0
-                    (v0<|public_vote := v|>)
-                    index_assum
-                    found
-                    eq_refl) as prev_index_assum.
-      specialize (IH call_assum prev_index_assum num_signups_assum pks_assum).
+      specialize (IH msg_assum order_assum num_signups_assum).
       setoid_rewrite (FMap.keys_already _ _ _ _ found).
       split.
       {
@@ -532,10 +564,7 @@ Proof.
         repeat split; try tauto.
         right.
         unfold make_vote_msg in *.
-        unfold IndexAssumptions in *.
-        specialize (prev_index_assum _ _ found).
-        rewrite prev_index_assum.
-        congruence.
+        destruct_hyps; congruence.
       * rewrite FMap.find_add_ne in find_add by auto.
         auto.
     + (* tally_votes *)
@@ -550,13 +579,13 @@ Proof.
       split; [tauto|].
       split; [tauto|].
       split; [tauto|].
-      intros [_ call_assum] index_assum num_signups_assum pks_assum.
+      intros [_ msg_assum] order_assum num_signups_assum.
       split; [tauto|].
       split; [tauto|].
       right.
       apply f_equal.
-      destruct IH as [finish_before_vote [_ [len_pks [len_pks' [party_count IH]]]]].
-      specialize (IH call_assum index_assum num_signups_assum pks_assum).
+      destruct IH as [finish_before_vote [_ [len_pks [pks_signups [party_count IH]]]]].
+      specialize (IH msg_assum order_assum num_signups_assum).
       destruct IH as [perm [addrs _]].
       unfold FMap.values in bruteforce.
       rewrite map_map in bruteforce.
@@ -594,12 +623,11 @@ Proof.
         apply FMap.In_elements in kvpin.
         specialize (addrs _ _ kvpin).
         cbn.
-        destruct addrs as [_ [_ []]]; try congruence.
-        fold (num_signups prev_inc_calls) in *.
+        destruct addrs as [_ [_ [_ []]]]; try congruence.
+        fold (signups prev_inc_calls) (SignupOrderAssumption pks index prev_inc_calls) in *.
+        rewrite pks_signups.
         specialize (num_signups_assum ltac:(lia)).
-        replace (length (public_keys prev_state)) with (length pks) in pks_assum by congruence.
-        rewrite firstn_all in *.
-        congruence.
+        now rewrite (all_signups pks index) by auto.
   - [CallFacts]: exact (fun _ ctx _ => ctx_from ctx <> ctx_contract_address ctx).
     subst CallFacts; cbn in *; congruence.
   - auto.
@@ -628,11 +656,10 @@ Theorem boardroom_voting_correct
       contract_state bstate caddr = Some cstate /\
       incoming_calls Msg trace caddr = Some inc_calls /\
 
-      (CallAssumptions pks index sks svs inc_calls ->
-       IndexAssumptions (registered_voters cstate) index ->
+      (MsgAssumption pks index sks svs inc_calls ->
+       SignupOrderAssumption pks index inc_calls ->
        (finish_registration_by (setup cstate) < Blockchain.current_slot bstate ->
-        num_signups inc_calls = length pks) ->
-       firstn (length (public_keys cstate)) pks = public_keys cstate ->
+        length pks = length (signups inc_calls)) ->
 
        (result cstate = None \/
         result cstate = Some (sumnat (fun party => if svs party then 1 else 0)%nat
