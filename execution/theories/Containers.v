@@ -66,11 +66,11 @@ Module FMap.
       k <> k' -> find k' (add k v m) = find k' m.
     Proof. apply fin_maps.lookup_insert_ne. Qed.
 
-    Lemma find_partial_alter k k (m : FMap K V) :
+    Lemma find_partial_alter k f (m : FMap K V) :
       find k (partial_alter f k m) = f (find k m).
     Proof. apply fin_maps.lookup_partial_alter. Qed.
 
-    Lemma find_partial_alter_ne k k' k (m : FMap K V) :
+    Lemma find_partial_alter_ne k k' f (m : FMap K V) :
       k <> k' ->
       find k' (partial_alter f k m) = find k' m.
     Proof. apply fin_maps.lookup_partial_alter_ne. Qed.
@@ -218,40 +218,6 @@ Module FMap.
           * apply IHm.
             destruct H1; auto; congruence.
           * tauto.
-    Qed.
-
-    Lemma list_to_map_flip (m : FMap K V) l :
-      Permutation (elements m) l ->
-      m = of_list l.
-    Proof. apply fin_maps.list_to_map_flip. Qed.
-
-    Lemma NoDup_elements_modify {A} k vold vnew (f : V -> A) (m : FMap K V) :
-      FMap.find k m = Some vold ->
-      f vold = f vnew ->
-      NoDup (map (fun '(_, v) => f v) (FMap.elements m)) ->
-      NoDup (map (fun '(_, v) => f v) (FMap.elements (FMap.add k vnew m))).
-    Proof.
-      intros find_prev fvold nodup.
-      rewrite <- (add_remove _ vnew).
-      rewrite <- (add_id k vold m) in nodup by auto.
-      rewrite <- (add_remove _ vold) in nodup.
-      rewrite elements_add by (apply find_remove).
-      rewrite elements_add in nodup by (apply find_remove).
-      inversion nodup; subst.
-      cbn.
-      rewrite <- fvold.
-      auto.
-    Qed.
-
-    Lemma In_elements_remove k v k' (m : FMap K V) :
-      In (k, v) (elements (remove k' m)) ->
-      In (k, v) (elements m).
-    Proof.
-      rewrite !In_elements.
-      intros.
-      destruct (stdpp.base.decide (k = k')) as [->|?].
-      - rewrite find_remove in H0; easy.
-      - rewrite find_remove_ne in H0; auto.
     Qed.
 
     Lemma elements_add_existing k vold vnew (m : FMap K V) :
