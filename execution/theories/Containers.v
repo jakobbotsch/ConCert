@@ -66,11 +66,11 @@ Module FMap.
       k <> k' -> find k' (add k v m) = find k' m.
     Proof. apply fin_maps.lookup_insert_ne. Qed.
 
-    Lemma find_partial_alter f k (m : FMap K V) :
+    Lemma find_partial_alter k k (m : FMap K V) :
       find k (partial_alter f k m) = f (find k m).
     Proof. apply fin_maps.lookup_partial_alter. Qed.
 
-    Lemma find_partial_alter_ne f k k' (m : FMap K V) :
+    Lemma find_partial_alter_ne k k' k (m : FMap K V) :
       k <> k' ->
       find k' (partial_alter f k m) = find k' m.
     Proof. apply fin_maps.lookup_partial_alter_ne. Qed.
