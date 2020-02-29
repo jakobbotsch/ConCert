@@ -614,8 +614,8 @@ Section WithBoardroomAxioms.
         destruct (Nat.leb_spec i (i + j)); lia.
     }
 
-    rewrite <- sumZ_sub.
-    rewrite sumZ_sumZ_seq_swap.
+    rewrite sumZ_sub.
+    rewrite sumZ_sumZ_swap.
     match goal with
     | [|- ?a - ?b = 0] => enough (a = b) by lia
     end.
@@ -682,7 +682,7 @@ Section WithBoardroomAxioms.
           reflexivity.
       }
 
-      rewrite sumZ_plus.
+      rewrite sumZ_add.
       rewrite sum_lemma.
       reflexivity.
   Qed.

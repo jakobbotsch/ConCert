@@ -397,46 +397,7 @@ Fixpoint All {A} (f : A -> Prop) (l : list A) : Prop :=
   | x :: xs => f x /\ All f xs
   end.
 
-Lemma All_cons {A} (f : A -> Prop) (x : A) (xs : list A) :
-  f x ->
-  All f xs ->
-  All f (x :: xs).
-Proof. cbn; auto. Qed.
-
-Lemma All_map_endo {A} (f : A -> Prop) (xs : list A) (g : A -> A) :
-  All f xs ->
-  (forall x, f x -> f (g x)) ->
-  All f (map g xs).
-Proof.
-  induction xs; auto.
-  cbn.
-  intros [].
-  auto.
-Qed.
-
-Lemma All_map {A} {B} (f : A -> Prop) (xs : list A) (g : B -> Prop) (h : A -> B) :
-  All f xs ->
-  (forall x, f x -> g (h x)) ->
-  All g (map h xs).
-Proof.
-  induction xs; auto.
-  cbn.
-  intros []; auto.
-Qed.
-
 Local Open Scope nat.
-Lemma skipn_none {B} n (l : list B) :
-  length l <= n -> skipn n l = [].
-Proof.
-  revert l.
-  induction n as [|n IH]; intros l le.
-  - cbn in *.
-    destruct l; cbn in *; auto; lia.
-  - destruct l; cbn in *; auto.
-    apply IH.
-    lia.
-Qed.
-
 Lemma sumZ_seq_n (f : nat -> Z) n len :
   sumZ f (seq n len) =
   sumZ (fun i => f (i + n)) (seq 0 len).
@@ -513,65 +474,16 @@ Proof.
 Qed.
 
 Local Open Scope Z.
+Lemma sumZ_add {A} (f g : A -> Z) l :
+  sumZ (fun a => f a + g a) l = sumZ f l + sumZ g l.
+Proof.
+  induction l; auto; cbn in *; lia.
+Qed.
 Lemma sumZ_sub {A} (f g : A -> Z) l :
-  sumZ f l - sumZ g l =
-  sumZ (fun a => f a - g a) l.
+  sumZ (fun a => f a - g a) l =
+  sumZ f l - sumZ g l.
 Proof.
   induction l; auto; cbn; lia.
-Qed.
-
-Lemma rev_seq start len :
-  rev (seq start len) =
-  map (fun i => 2*start + len - i - 1)%nat (seq start len).
-Proof.
-  assert (forall l l',
-             length l = length l' ->
-             (forall i,
-                 i < length l -> nth i l 0%nat = nth i l' 0)%nat ->
-             l = l').
-  {
-    clear.
-    intros l l' length_eq all_same.
-    revert l' length_eq all_same.
-    induction l as [|x xs IH]; intros l' length_eq all_same.
-    - destruct l'; cbn in *; congruence.
-    - destruct l'; cbn in *; try congruence.
-      specialize (IH l' ltac:(auto)).
-      pose proof (all_same 0%nat ltac:(lia)) as rew1.
-      cbn in rew1.
-      subst; apply f_equal.
-      apply IH.
-      intros i lt.
-      specialize (all_same (S i) ltac:(lia)).
-      cbn in all_same.
-      auto.
-  }
-
-  apply H; [now rewrite rev_length, map_length|].
-  clear H.
-  intros i lt.
-  rewrite rev_nth; cycle 1.
-  { now rewrite <- rev_length. }
-
-  (* get 0%nat on the form f d where f is the func we map with *)
-  set (f i := (2 * start + len - i - 1)%nat).
-  replace 0%nat with (f (2 * start + len - 1)%nat) at -1 by (cbn; lia).
-  subst f.
-  rewrite map_nth.
-  cbn.
-  rewrite rev_length, seq_length in *.
-  rewrite !seq_nth by lia.
-  lia.
-Qed.
-
-Lemma sumZ_seq_rev (f : nat -> Z) start len :
-  sumZ f (seq start len) =
-  sumZ (fun i => f (2*start + len - i - 1)%nat) (seq start len).
-Proof.
-  rewrite (Permutation_rev (seq start len)).
-  rewrite rev_seq at 1.
-  rewrite sumZ_map.
-  now rewrite <- Permutation_rev.
 Qed.
 
 Lemma sumZ_seq_split split_len (f : nat -> Z) start len :
@@ -598,11 +510,6 @@ Proof.
     rewrite <- IH.
     lia.
 Qed.
-
-Lemma sumZ_sumZ_seq_swap (f : nat -> nat -> Z) start1 len1 start2 len2 :
-  sumZ (fun i => sumZ (f i) (seq start2 len2)) (seq start1 len1) =
-  sumZ (fun j => sumZ (fun i => f i j) (seq start1 len1)) (seq start2 len2).
-Proof. apply sumZ_sumZ_swap. Qed.
 
 Lemma All_Forall {A} (l : list A) f :
   All f l <-> Forall f l.
@@ -669,12 +576,6 @@ Proof.
   - apply IH.
     intros i ilt.
     now specialize (all_same (i + 1)%nat ltac:(lia)).
-Qed.
-
-Lemma sumZ_plus {A} (f g : A -> Z) l :
-  sumZ (fun a => f a + g a) l = sumZ f l + sumZ g l.
-Proof.
-  induction l; auto; cbn in *; lia.
 Qed.
 
 Lemma sumZ_map_id {A} (f : A -> Z) l :
@@ -793,227 +694,6 @@ Proof.
       apply all; right; auto.
     + specialize (all x (or_introl eq_refl)).
       lia.
-Qed.
-
-Lemma flat_map_app {A B} (l l' : list A) (f : A -> list B) :
-  flat_map f (l ++ l') = flat_map f l ++ flat_map f l'.
-Proof.
-  now rewrite flat_map_concat_map, map_app, concat_app, <- !flat_map_concat_map.
-Qed.
-
-Lemma NoDup_Permutation_iff {A} {l l' : list A} :
-  NoDup l ->
-  NoDup l' ->
-  (forall x, In x l <-> In x l') <-> Permutation l l'.
-Proof.
-  intros nodupl nodupl'.
-  split; [apply NoDup_Permutation; auto|].
-  intros perm.
-  intros x.
-  now rewrite perm.
-Qed.
-
-Lemma In_concat {A} x (ls : list (list A)) :
-  In x (concat ls) <->
-  exists l,
-    In l ls /\ In x l.
-Proof.
-  split.
-  - intros isin.
-    induction ls as [|l ls IH]; cbn in *; try easy.
-    apply in_app_iff in isin.
-    destruct isin as [in_here | in_later].
-    + exists l.
-      tauto.
-    + destruct (IH in_later) as [inl []].
-      exists inl; tauto.
-  - intros ex.
-    induction ls as [|l ls IH].
-    + destruct ex; cbn in *; tauto.
-    + cbn.
-      apply in_app_iff.
-      destruct ex as [l' [[->|?] inlater]].
-      * tauto.
-      * right; apply IH.
-        exists l'; tauto.
-Qed.
-
-Lemma find_app_first {A} (f : A -> bool) (l l' : list A) a :
-  find f l = Some a ->
-  find f (l ++ l') = Some a.
-Proof.
-  revert l'.
-  induction l as [|x xs IH]; intros l' find_some; cbn in *; try easy.
-  destruct (f x); [congruence|].
-  now rewrite IH by auto.
-Qed.
-
-Lemma find_app_last {A} (f : A -> bool) (l l' : list A) :
-  find f l = None ->
-  find f (l ++ l') = find f l'.
-Proof.
-  revert l'.
-  induction l as [|x xs IH]; intros l' find_none; cbn; auto.
-  cbn in find_none.
-  destruct (f x); [congruence|].
-  now rewrite IH by auto.
-Qed.
-
-Lemma find_none_perm {A} (f : A -> bool) l l' :
-  Permutation l l' ->
-  find f l = None <-> find f l' = None.
-Proof.
-  intros perm.
-  induction perm.
-  - cbn. tauto.
-  - cbn.
-    destruct (f x); tauto.
-  - cbn.
-    destruct (f x), (f y); split; intros; try congruence; tauto.
-  - tauto.
-Qed.
-
-Lemma seq_all_bound start len :
-  All (fun i => start <= i < start + len) (seq start len).
-Proof.
-  now apply All_Forall, Forall_forall, in_seq.
-Qed.
-
-Lemma flat_map_ext_in {B C} (f f' : B -> list C) (l : list B) :
-  (forall b, In b l -> f b = f' b) ->
-  flat_map f l = flat_map f' l.
-Proof.
-  intros.
-  rewrite !flat_map_concat_map.
-  apply f_equal.
-  now apply map_ext_in.
-Qed.
-
-Lemma NoDup_app {B} (l l' : list B) :
-  NoDup l ->
-  NoDup l' ->
-  (forall b, In b l -> ~In b l') ->
-  NoDup (l ++ l').
-Proof.
-  intros nodupl nodupl' all_nin.
-  induction l as [|b bs IH]; cbn; auto.
-  constructor.
-  - inversion nodupl; subst.
-    intros isin.
-    apply in_app_iff in isin.
-    destruct isin; [easy|].
-    apply (all_nin b); auto.
-    left; auto.
-  - apply IH.
-    + inversion nodupl; auto.
-    + intros b' inb'.
-      apply all_nin.
-      right; auto.
-Qed.
-
-Lemma NoDup_flat_map_disjoint {B C} (f : B -> list C) (l : list B) :
-  (forall b, In b l -> NoDup (f b)) ->
-  (forall b b', b <> b' -> In b l -> In b' l -> forall c, In c (f b) -> ~In c (f b')) ->
-  NoDup l ->
-  NoDup (flat_map f l).
-Proof.
-  intros all_disjoint all_pairwise_disjoint nodupb.
-  induction l as [|b bs IH]; cbn; [constructor|].
-  unshelve epose proof (IH _ _) as IH.
-  - intros a ain; apply all_disjoint; cbn; tauto.
-  - intros a a' aneq ain a'in.
-    apply all_pairwise_disjoint; cbn; tauto.
-  - cbn in *.
-    apply NoDup_app; auto.
-    + apply IH; inversion nodupb; auto.
-    + intros c cin cinmap.
-      rewrite flat_map_concat_map in cinmap.
-      apply In_concat in cinmap.
-      destruct cinmap as [inl [inll incl]].
-      apply in_map_iff in inll.
-      destruct inll as [x [<- inxbs]].
-      inversion nodupb; subst.
-      unshelve epose proof (in_NoDup_app x bs [b] inxbs _).
-      { rewrite (Permutation_app_comm bs [b]); cbn; auto. }
-      cbn in H.
-      unshelve epose proof (all_pairwise_disjoint b x _ _ _ c cin); tauto.
-Qed.
-
-Lemma find_NoDup_perm {A B} (f : A -> B) (g : B -> bool) (l l' : list A) :
-  NoDup (map f l) ->
-  Permutation l l' ->
-  (forall a a', In a l -> In a l' -> In a' l -> In a' l' ->
-                g (f a) = true ->
-                g (f a') = true -> f a = f a') ->
-  find (fun a => g (f a)) l = find (fun a => g (f a)) l'.
-Proof.
-  intros nodup perm inj.
-  induction perm.
-  - auto.
-  - cbn.
-    destruct (g (f x)); auto.
-    apply IHperm.
-    + inversion nodup; auto.
-    + intros a a' al al' a'l a'l' injects.
-      apply inj; cbn; tauto.
-  - cbn in *.
-    destruct (g (f x)) eqn:gfx, (g (f y)) eqn:gfy; auto.
-    inversion nodup; subst.
-    cbn in *.
-    unshelve epose proof (inj x y _ _ _ _ _); cbn; tauto.
-  - rewrite IHperm1, IHperm2; auto.
-    + now rewrite <- perm1.
-    + intros.
-      apply inj; auto; rewrite perm1; auto.
-    + intros.
-      apply inj; auto; rewrite <- perm2; auto.
-Qed.
-
-Lemma skipn_length {A} n (l : list A) :
-  length (skipn n l) = length l - n.
-Proof.
-  revert l.
-  induction n as [|n IH]; intros l; cbn.
-  - lia.
-  - destruct l as [|x xs]; auto.
-    specialize (IH xs).
-    cbn.
-    lia.
-Qed.
-
-Lemma map_option_flat_map {A B} (f : A -> option B) (l : list A) :
-  map_option f l =
-  flat_map (fun a => match f a with
-                     | Some x => [x]
-                     | None => []
-                     end) l.
-Proof.
-  induction l as [|x xs IH]; auto.
-  cbn.
-  destruct (f x); auto.
-  cbn.
-  apply f_equal; auto.
-Qed.
-
-Lemma map_option_app {A B} (f : A -> option B) (l l' : list A) :
-  map_option f (l ++ l') = map_option f l ++ map_option f l'.
-Proof.
-  now rewrite
-      map_option_flat_map,
-      flat_map_concat_map,
-      map_app,
-      concat_app,
-      <- !flat_map_concat_map,
-      <- !map_option_flat_map.
-Qed.
-
-Lemma find_map {A B} (f : A -> B) g l :
-  find g (map f l) = option_map f (find (fun a => g (f a)) l).
-Proof.
-  induction l as [|x xs IH]; auto.
-  cbn.
-  rewrite IH.
-  destruct (g (f x)); auto.
 Qed.
 
 Lemma list_eq_nth {A} (xs ys : list A) :
