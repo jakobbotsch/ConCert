@@ -17,6 +17,12 @@ Module FMap.
   Notation empty := stdpp.base.empty.
   Notation add := stdpp.base.insert.
   Notation find := stdpp.base.lookup.
+  Definition mem `{base.Lookup K V M} (i : K) (m : M) :=
+    match base.lookup i m with
+    | Some _ => true
+    | None => false
+    end.
+
   Notation remove := stdpp.base.delete.
   Notation elements := fin_maps.map_to_list.
   Notation size := stdpp.base.size.
