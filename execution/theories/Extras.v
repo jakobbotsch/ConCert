@@ -1047,35 +1047,12 @@ Proof.
     f_equal; lia.
 Qed.
 
-(*
-Lemma Permutation_split {A} (xs ys zs : list A) :
-  Permutation xs (ys ++ zs) ->
-  exists xs1 xs2,
-    xs1 ++ xs2 = xs /\
-    Permutation xs1 ys /\
-    Permutation xs2 zs.
+Lemma nth_error_snoc {B} (l : list B) (x : B) :
+  nth_error (l ++ [x]) (length l) = Some x.
 Proof.
-  intros perm.
-  revert ys zs perm.
-  induction xs as [|x xs IH]; intros ys zs perm.
-  - exists [], [].
-    split; auto.
-    apply Permutation_nil, app_eq_nil in perm.
-    destruct perm as [-> ->]; auto.
-  - assert (In x (x :: xs)) by (left; auto).
-    rewrite perm in H.
-    apply in_iff.
-*)
-
-Lemma f_match_option {A B C} (f : A -> B) (o : option C) a b :
-  f match o with
-    | Some x => a
-    | None => b
-    end = match o with
-          | Some x => f a
-          | None => f b
-          end.
-Proof. destruct o; auto. Qed.
+  rewrite nth_error_app2 by lia.
+  now replace (length l - length l) with 0 by lia.
+Qed.
 
 Definition large_modulus : Z :=
 32317006071311007300338913926423828248817941241140239112842009751400741706634354222619689417363569347117901737909704191754605873209195028853758986185622153212175412514901774520270235796078236248884246189477587641105928646099411723245426622522193230540919037680524235519125679715870117001058055877651038861847280257976054903569732561526167081339361799541336476559160368317896729073178384589680639671900977202194168647225871031411336429319536193471636533209717077448227988588565369208645296636077250268955505928362751121174096972998068410554359584866583291642136218231078990999448652468262416972035911852507045361090559.
