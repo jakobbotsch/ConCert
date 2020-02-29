@@ -162,11 +162,7 @@ Ltac solve_contract_proper :=
 Program Definition contract : Contract Setup Msg State :=
   build_contract init _ receive _.
 Next Obligation. repeat intro; solve_contract_proper. Qed.
-Next Obligation.
-  repeat intro; solve_contract_proper.
-  - now rewrite (current_slot_eq x y) by auto.
-  - now rewrite (account_balance_eq x y) by auto.
-Qed.
+Next Obligation. repeat intro; solve_contract_proper. Qed.
 
 Section Theories.
   Lemma no_self_calls bstate caddr :
@@ -484,7 +480,7 @@ Section Theories.
               lia.
             ++ (* Seller still has more to withdraw, next_step is still withdrawals *)
               replace (match seller_withdrawable prev_state with _ => _ end)
-                with (prev_state <| buyer_withdrawable ::= fun _ => 0 |>)
+                with (prev_state <| buyer_withdrawable := 0 |>)
                 by (destruct_match; cbn in *; try congruence).
               cbn.
               rewrite prev_next_step.
@@ -519,7 +515,7 @@ Section Theories.
               lia.
             ++ (* Buyer still has more to withdraw, next_step is still withdrawals *)
               replace (match buyer_withdrawable prev_state with _ => _ end)
-                with (prev_state <| seller_withdrawable ::= fun _ => 0 |>)
+                with (prev_state <| seller_withdrawable := 0 |>)
                 by (destruct_match; cbn in *; try congruence).
               cbn.
               rewrite prev_next_step.
