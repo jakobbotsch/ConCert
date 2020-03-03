@@ -25,14 +25,15 @@ Import RecordSetNotations.
 
 Section BoardroomVoting.
 Context `{Base : ChainBase}.
-Context `(H : Z -> Z).
-(*Context (verify_vote (vote : Z) (rk : Z) (jj*)
-Context (modulus : Z).
-Context (modulus_prime : prime modulus).
 
-Instance zp : BoardroomAxioms Z := Zp.boardroom_axioms _ modulus_prime.
-Context {generator : Generator zp}.
-Context {discr_log : DiscreteLog zp generator}.
+Context {A : Type}.
+Context `(H : A -> Z).
+Context {ser : Serializable A}.
+Context {axioms : BoardroomAxioms A}.
+Context {generator : Generator axioms}.
+Context {discr_log : DiscreteLog axioms generator}.
+
+Local Open Scope ffield.
 
 (* Allow us to automatically derive Serializable instances *)
 Set Nonrecursive Elimination Schemes.
@@ -51,22 +52,22 @@ Record VoterInfo :=
   build_voter_info {
     voter_index : nat;
     vote_hash : Z;
-    public_vote : Z;
+    public_vote : A;
 }.
 
 Record State :=
   build_state {
     owner : Address;
     registered_voters : FMap Address VoterInfo;
-    public_keys : list Z;
+    public_keys : list A;
     setup : Setup;
     result : option nat;
   }.
 
 Inductive Msg :=
-| signup (pk : Z)
+| signup (pk : A)
 | commit_to_vote (hash : Z)
-| submit_vote (v : Z) (proof : Z)
+| submit_vote (v : A) (proof : Z)
 | tally_votes.
 
 Global Instance VoterInfo_settable : Settable _ :=
@@ -89,9 +90,9 @@ Global Instance Msg_serializable : Serializable Msg :=
 
 Class VoteProofScheme :=
   build_vote_proof_scheme {
-    make_vote_proof (pks : list Z) (index : nat)
+    make_vote_proof (pks : list A) (index : nat)
                     (secret_key : Z) (secret_vote : bool) : Z;
-    verify_vote (pks : list Z) (index : nat) (public_vote proof : Z) : bool;
+    verify_vote (pks : list A) (index : nat) (public_vote : A) (proof : Z) : bool;
 
     (*
     verify_vote_spec pks index pv proof :
@@ -129,11 +130,11 @@ Definition receive : ContractReceiver State Msg State :=
     do lift (if FMap.find caller (registered_voters state) then None else Some tt);
     do amt <- lift call_amount;
     do lift (if amt =? (registration_deposit (setup state)) then Some tt else None);
-    do lift (if Z.of_nat (length (public_keys state)) <? modulus - 2 then Some tt else None);
+    do lift (if Z.of_nat (length (public_keys state)) <? order - 2 then Some tt else None);
     let index := length (public_keys state) in
     let inf := {| voter_index := index;
                   vote_hash := 0;
-                  public_vote := 0; |} in
+                  public_vote := zero; |} in
     let new_state := state<|registered_voters ::= FMap.add caller inf|>
                           <|public_keys ::= fun l => l ++ [pk]|> in
     accept_call new_state
@@ -160,7 +161,9 @@ Definition receive : ContractReceiver State Msg State :=
     do lift (if cur_slot <? finish_vote_by (setup state) then None else Some tt)%nat;
     do lift (match result state with | Some _ => None | None => Some tt end);
     let voters := FMap.values (registered_voters state) in
-    do lift (if existsb (fun vi => public_vote vi =? 0) voters then None else Some tt);
+    do lift (if existsb
+                  (fun vi => if elmeqb (public_vote vi) zero then true else false)
+                  voters then None else Some tt);
     let votes := map public_vote voters in
     do res <- lift (bruteforce_tally votes);
     accept_call (state<|result := Some res|>)
@@ -201,10 +204,10 @@ Defined.
 Definition make_signup_msg (sk : Z) : Msg :=
   signup (compute_public_key sk).
 
-Definition make_commit_msg (pks : list Z) (my_index : nat) (sk : Z) (sv : bool) : Msg :=
+Definition make_commit_msg (pks : list A) (my_index : nat) (sk : Z) (sv : bool) : Msg :=
   commit_to_vote (H (compute_public_vote (reconstructed_key pks my_index) sk sv)).
 
-Definition make_vote_msg (pks : list Z) (my_index : nat) (sk : Z) (sv : bool) : Msg :=
+Definition make_vote_msg (pks : list A) (my_index : nat) (sk : Z) (sv : bool) : Msg :=
   submit_vote (compute_public_vote (reconstructed_key pks my_index) sk sv)
               (make_vote_proof pks my_index sk sv).
 
@@ -214,7 +217,7 @@ Section Theories.
    created using the make_signup_msg and make_vote_msg functions from
    the contract *)
 Fixpoint MsgAssumption
-         (pks : list Z)
+         (pks : list A)
          (index : Address -> nat)
          (sks : Address -> Z)
          (svs : Address -> bool)
@@ -231,7 +234,7 @@ Fixpoint MsgAssumption
   | [] => True
   end.
 
-Definition signups (calls : list (ContractCallInfo Msg)) : list (Address * Z) :=
+Definition signups (calls : list (ContractCallInfo Msg)) : list (Address * A) :=
   (* reverse the signups since the calls will have the last one at the head *)
   rev (map_option (fun call => match Blockchain.call_msg call with
                                | Some (signup pk) => Some (Blockchain.call_from call, pk)
@@ -241,7 +244,7 @@ Definition signups (calls : list (ContractCallInfo Msg)) : list (Address * Z) :=
 (* The index map and public keys list provided also needs to match the
    order in which parties signed up in the contract. *)
 Definition SignupOrderAssumption
-           (pks : list Z)
+           (pks : list A)
            (index : Address -> nat)
            (calls : list (ContractCallInfo Msg)) : Prop :=
   All (fun '((addr, pk), i) => index addr = i /\ nth_error pks i = Some pk)
@@ -267,7 +270,6 @@ Proof.
 Qed.
 *)
 
-Opaque zp.
 Local Open Scope nat.
 
 Lemma no_outgoing bstate caddr :
@@ -380,7 +382,7 @@ Theorem boardroom_voting_correct_strong
       length (public_keys cstate) = FMap.size (registered_voters cstate) /\
       public_keys cstate = map snd (signups inc_calls) /\
 
-      (Z.of_nat (length (public_keys cstate)) < modulus - 1)%Z /\
+      (Z.of_nat (length (public_keys cstate)) < order - 1)%Z /\
 
       (MsgAssumption pks index sks svs inc_calls ->
        SignupOrderAssumption pks index inc_calls ->
@@ -397,7 +399,7 @@ Theorem boardroom_voting_correct_strong
            voter_index inf = index addr /\
            nth_error (public_keys cstate) (voter_index inf) =
            Some (compute_public_key (sks addr)) /\
-           (public_vote inf = 0%Z \/
+           (public_vote inf == zero \/
             public_vote inf = compute_public_vote
                                 (reconstructed_key pks (voter_index inf))
                                 (sks addr)
@@ -421,7 +423,7 @@ Proof.
     split; auto.
     split; auto.
     split; [symmetry; apply FMap.size_empty|].
-    pose proof (prime_ge_2 _ modulus_prime).
+    pose proof order_ge_2.
     split; [auto|].
     split; [lia|].
     intros _ index_assum pks_assum.
@@ -495,7 +497,7 @@ Proof.
            rewrite pks_signups, map_length.
            split; [symmetry; tauto|].
            split; [congruence|].
-           left; auto.
+           left; easy.
         -- rewrite FMap.find_add_ne in find_add by auto.
            destruct IH as [_ [IH _]].
            specialize (IH _ _ find_add).
@@ -564,7 +566,10 @@ Proof.
         repeat split; try tauto.
         right.
         unfold make_vote_msg in *.
-        destruct_hyps; congruence.
+        inversion vote_assum.
+        destruct_hyps.
+        replace (index (ctx_from ctx)) with (voter_index v0) by congruence.
+        easy.
       * rewrite FMap.find_add_ne in find_add by auto.
         auto.
     + (* tally_votes *)
@@ -619,11 +624,11 @@ Proof.
           tauto.
         }
         apply Bool.negb_true_iff in all_voted.
-        apply Z.eqb_neq in all_voted.
+        destruct (elmeqb_spec (public_vote v) zero); [congruence|].
         apply FMap.In_elements in kvpin.
         specialize (addrs _ _ kvpin).
         cbn.
-        destruct addrs as [_ [_ [_ []]]]; try congruence.
+        destruct addrs as [_ [_ [_ []]]]; [easy|].
         fold (signups prev_inc_calls) (SignupOrderAssumption pks index prev_inc_calls) in *.
         rewrite pks_signups.
         specialize (num_signups_assum ltac:(lia)).
@@ -675,103 +680,3 @@ Qed.
 End Theories.
 
 End BoardroomVoting.
-(*
-
-Require Import LocalBlockchain.
-
-Fixpoint reconstructed_keys_aux
-        (pks : list Z) (lprod rprod : Z) : list Z :=
-  match pks with
-  | [] => []
-  | pk :: tl =>
-    let rprod := rprod * pk in
-    let rk := lprod * rprod mod modulus in
-    rk :: reconstructed_keys_aux tl (lprod * pk) rprod
-  end.
-
-Definition reconstructed_keys (pks : list Z) : list Z :=
-  let rprod := fold_right (fun e r => (e * r) mod modulus) 1 pks in
-  let rprod := mod_inv rprod modulus in
-  reconstructed_keys_aux pks 1 rprod.
-
-
-Definition modulus : Z := 1552518092300708935130918131258481755631334049434514313202351194902966239949102107258669453876591642442910007680288864229150803718918046342632727613031282983744380820890196288509170691316593175367469551763119843371637221007210577919.
-Definition generator : Z := 2.
-Definition sk n := mod_pow ((Z.of_nat n + 1234583932) * (modulus - 23241)) 159338231 modulus.
-
-Definition num_parties : nat := 7.
-Definition votes_for : nat := 3.
-Definition sks : list Z := Eval native_compute in map sk (seq 7 num_parties).
-Definition pks : list Z := Eval native_compute in map (fun sk => mod_pow generator sk modulus) sks.
-Definition svs : list bool :=
-  Eval compute in map (fun _ => true)
-                      (seq 0 votes_for)
-                  ++ map (fun _ => false)
-                         (seq 0 (num_parties - votes_for)).
-Definition expected_result : nat :=
-  Eval compute in (fold_right (fun (e : bool) r => r + if e then 1 else 0) 0 svs)%nat.
-Definition rks : Vector.t Z (length pks) := Eval native_compute in reconstructed_keys modulus pks.
-Definition pvs : list Z :=
-  Eval native_compute in
-    (fix f (sks : list Z) (rks : list Z) (svs : list bool) :=
-       match sks, rks, svs with
-       | sk :: sks, rk :: rks, sv :: svs =>
-         (mod_pow rk sk modulus * generator^(if sv then 1 else 0)) mod modulus :: f sks rks svs
-       | _, _, _ => []
-       end) sks (Vector.to_list rks) svs.
-
-Definition A a :=
-  BoundedN.of_Z_const AddrSize a.
-
-Local Open Scope nat.
-Definition addrs : list Address.
-Proof.
-  let rec add_addr z n :=
-    match n with
-    | O => constr:(@nil Address)
-    | S ?n => let tail := add_addr (z + 1)%Z n in
-              constr:(cons (A z) tail)
-    end in
-  let num := eval compute in num_parties in
-  let tm := add_addr 11%Z num in
-  let tm := eval vm_compute in tm in
-  exact tm.
-Defined.
-
-Definition deploy_setup :=
-  {| eligible_voters := FMap.of_list (map (fun a => (a, tt)) addrs);
-     finish_registration_by := 3;
-     finish_commit_by := None;
-     finish_vote_by := 5;
-     registration_deposit := 0; |}.
-
-Import Blockchain.
-Definition boardroom_example : option nat :=
-  let chain : LocalChainBuilderDepthFirst := builder_initial in
-  let creator := A 10 in
-  let add_block (chain : LocalChainBuilderDepthFirst) (acts : list Action) :=
-      let next_header :=
-          {| block_height := S (chain_height chain);
-             block_slot := S (current_slot chain);
-             block_finalized_height := finalized_height chain;
-             block_creator := creator;
-             block_reward := 50; |} in
-      builder_add_block chain next_header acts in
-  do chain <- add_block chain [];
-  let dep := build_act creator (create_deployment 0 (boardroom_voting id modulus generator) deploy_setup) in
-  do chain <- add_block chain [dep];
-  do caddr <- hd None (map Some (FMap.keys (lc_contracts (lcb_lc chain))));
-  let reg addr pk := build_act addr (act_call caddr 0 (serialize (signup pk))) in
-  let calls := map (fun '(addr, pk) => reg addr pk) (zip addrs pks) in
-  do chain <- add_block chain calls;
-  let vote addr v := build_act addr (act_call caddr 0 (serialize (submit_vote v))) in
-  let votes := map (fun '(addr, pv) => vote addr pv) (zip addrs pvs) in
-  do chain <- add_block chain votes;
-  do chain <- add_block chain [];
-  let tally := build_act creator (act_call caddr 0 (serialize tally_votes)) in
-  do chain <- add_block chain [tally];
-  do state <- contract_state (lcb_lc chain) caddr;
-  result state.
-
-Eval native_compute in boardroom_example.
-*)

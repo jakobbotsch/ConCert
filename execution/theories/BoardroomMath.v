@@ -20,7 +20,8 @@ Local Open Scope Z.
 Class BoardroomAxioms {A : Type} :=
   {
     elmeq : A -> A -> Prop;
-    elmeq_dec x y : {elmeq x y} + {~(elmeq x y)};
+    elmeqb : A -> A -> bool;
+    elmeqb_spec x y : Bool.reflect (elmeq x y) (elmeqb x y);
     zero : A;
     one : A;
 
@@ -306,8 +307,8 @@ Section WithBoardroomAxioms.
     a * b == 0 -> a == 0 \/ b == 0.
   Proof.
     intros ab0.
-    destruct (elmeq_dec a 0) as [?|a0]; auto.
-    destruct (elmeq_dec b 0) as [?|b0]; auto.
+    destruct (elmeqb_spec a 0) as [->|a0]; [left; easy|].
+    destruct (elmeqb_spec b 0) as [->|b0]; [right; easy|].
     pose proof (int_domain _ _ a0 b0).
     contradiction.
   Qed.
@@ -369,7 +370,7 @@ Section WithBoardroomAxioms.
   Fixpoint bruteforce_tally_aux
            (n : nat)
            (votes_product : A) : option nat :=
-    if elmeq_dec (generator ^ (Z.of_nat n)) votes_product then
+    if elmeqb (generator ^ (Z.of_nat n)) votes_product then
       Some n
     else
       match n with
@@ -707,11 +708,13 @@ Section WithBoardroomAxioms.
     intros n ? <- p p' prodeq.
     induction n as [|n IH].
     - cbn.
-      destruct (elmeq_dec _ _), (elmeq_dec _ _); auto.
+      destruct (elmeqb_spec (generator^0) p),
+               (elmeqb_spec (generator^0) p'); auto.
       + rewrite prodeq in e; contradiction.
       + rewrite <- prodeq in e; contradiction.
     - cbn.
-      destruct (elmeq_dec _ _), (elmeq_dec _ _); auto.
+      destruct (elmeqb_spec (generator^Z.pos (Pos.of_succ_nat n)) p),
+               (elmeqb_spec (generator^Z.pos (Pos.of_succ_nat n)) p'); auto.
       + rewrite prodeq in e; contradiction.
       + rewrite <- prodeq in e; contradiction.
   Qed.
@@ -732,14 +735,16 @@ Section WithBoardroomAxioms.
     induction max as [|max IH].
     - replace result with 0%nat by lia.
       cbn.
-      destruct (elmeq_dec _ _); auto.
+      destruct (elmeqb_spec (generator^0) (generator^0)); auto.
       contradiction n; reflexivity.
     - destruct (Nat.eq_dec result (S max)) as [->|?].
       + cbn.
-        destruct (elmeq_dec _ _); auto.
+        destruct (elmeqb_spec (generator ^ Z.pos (Pos.of_succ_nat max))
+                              (generator ^ Z.pos (Pos.of_succ_nat max))); auto.
         contradiction n; reflexivity.
       + cbn -[Z.of_nat].
-        destruct (elmeq_dec _ _) as [eq|?]; auto.
+        destruct (elmeqb_spec (generator ^ Z.of_nat (S max))
+                              (generator ^ Z.of_nat result)) as [eq|?]; auto.
         * pose proof (generator_generates (generator ^ Z.of_nat result) ltac:(auto)).
           destruct H as [e [sat unique]].
           unshelve epose proof (unique (Z.of_nat (S max)) _) as smax.
@@ -1598,6 +1603,7 @@ Module Zp.
     refine
       {|
         elmeq a b := a mod p = b mod p;
+        elmeqb a b := a mod p =? b mod p;
         zero := 0;
         one := 1;
         add a a' := (a + a') mod p;
@@ -1607,7 +1613,7 @@ Module Zp.
         pow a e := mod_pow a e p;
         order := p;
       |}.
-    - intros x y; apply Z.eq_dec.
+    - intros x y; apply Z.eqb_spec.
     - lia.
     - constructor; auto.
       now intros a a' a'' -> ->.
@@ -1773,6 +1779,7 @@ Module BigZp.
     pose proof (prime_ge_2 _ isprime).
     refine
       {| elmeq a b := a mod p == b mod p;
+         elmeqb a b := a mod p =? b mod p;
          zero := 0;
          one := 1;
          add a a' := (a + a') mod p;
@@ -1782,8 +1789,7 @@ Module BigZp.
          pow a e := mod_pow a e p;
          order := BigZ.to_Z p;
       |}; unfold "==".
-    - intros x y.
-      apply Z.eq_dec.
+    - intros x y; apply BigZ.eqb_spec.
     - lia.
     - constructor; auto.
       now intros a a' a'' -> ->.

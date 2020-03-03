@@ -7,6 +7,7 @@ execution/theories/Automation.v
 execution/theories/Blockchain.v
 execution/theories/BoardroomMath.v
 execution/theories/BoardroomVoting.v
+execution/theories/BoardroomVotingTest.v
 execution/theories/BoundedN.v
 execution/theories/ChainedList.v
 execution/theories/Circulation.v
