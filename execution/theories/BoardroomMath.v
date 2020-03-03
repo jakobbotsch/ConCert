@@ -172,7 +172,7 @@ Section WithBoardroomAxioms.
 
   Hint Resolve one_neq_zero pow_nonzero generator_nonzero inv_nonzero : core.
 
-  Instance dr : DefaultRelation elmeq.
+  Instance dr : DefaultRelation elmeq := _.
 
   Fixpoint prod (l : list A) : A :=
     match l with
@@ -1342,7 +1342,7 @@ Module Zp.
     - rewrite Z.mod_mod by auto.
       auto.
   Qed.
-  Hint Resolve mod_mod_nonzero.
+  Hint Resolve mod_mod_nonzero : core.
 
   Lemma mod_pow_pos_aux_nonzero a x p r :
     prime p ->

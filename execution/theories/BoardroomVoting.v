@@ -18,7 +18,6 @@ Require Import Extras.
 Require Import BoardroomMath.
 Require Import Monads.
 Require Import Serializable.
-From ConCert.Execution Require Import Sorting.
 
 Import ListNotations.
 Import RecordSetNotations.

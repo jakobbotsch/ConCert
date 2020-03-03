@@ -4,6 +4,7 @@ vendor/record-update/RecordUpdate.v
 
 -R execution/theories ConCert.Execution
 execution/theories/Automation.v
+execution/theories/BignumsSerializable.v
 execution/theories/Blockchain.v
 execution/theories/BoardroomMath.v
 execution/theories/BoardroomVoting.v

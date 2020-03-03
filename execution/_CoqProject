@@ -4,6 +4,7 @@
 
 -R theories ConCert.Execution
 theories/Automation.v
+theories/BignumsSerializable.v
 theories/Blockchain.v
 theories/BoardroomMath.v
 theories/BoardroomVoting.v
