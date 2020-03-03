@@ -651,7 +651,14 @@ Qed.
 
 Theorem boardroom_voting_correct
         bstate caddr (trace : ChainTrace empty_state bstate)
-        pks index sks svs :
+        (* list of all public keys, in the order of signups *)
+        (pks : list Z)
+        (* function mapping a party to his signup index *)
+        (index : Address -> nat)
+        (* function mapping a party to his secret key *)
+        (sks : Address -> Z)
+        (* function mapping a party to his vote *)
+        (svs : Address -> bool) :
     env_contracts bstate caddr = Some (boardroom_voting : WeakContract) ->
     exists (cstate : State)
            (depinfo : DeploymentInfo Setup)
@@ -660,11 +667,20 @@ Theorem boardroom_voting_correct
       contract_state bstate caddr = Some cstate /\
       incoming_calls Msg trace caddr = Some inc_calls /\
 
-      (MsgAssumption pks index sks svs inc_calls ->
+      ((* assuming that the message sent were created with the
+          functions provided by this smart contract *)
+       MsgAssumption pks index sks svs inc_calls ->
+
+       (* ..and that people signed up in the order given by 'index'
+          and 'pks' *)
        SignupOrderAssumption pks index inc_calls ->
+
+       (* ..and that the correct number of people register *)
        (finish_registration_by (setup cstate) < Blockchain.current_slot bstate ->
         length pks = length (signups inc_calls)) ->
 
+       (* we have that the contract either has not computed the
+          result, or has computed the correct result *)
        (result cstate = None \/
         result cstate = Some (sumnat (fun party => if svs party then 1 else 0)%nat
                                      (FMap.keys (registered_voters cstate))))).
