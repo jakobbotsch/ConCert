@@ -362,6 +362,12 @@ Proof.
     destruct H0; lia.
 Qed.
 
+Definition has_tallied (calls : list (ContractCallInfo Msg)) : bool :=
+  existsb (fun c => match Blockchain.call_msg c with
+                    | Some tally_votes => true
+                    | _ => false
+                    end) calls.
+
 Theorem boardroom_voting_correct_strong
         bstate caddr (trace : ChainTrace empty_state bstate)
         pks index sks svs :
@@ -376,7 +382,7 @@ Theorem boardroom_voting_correct_strong
       finish_registration_by (setup cstate) < finish_vote_by (setup cstate) /\
 
       (Blockchain.current_slot bstate < finish_vote_by (setup cstate) ->
-       result cstate = None) /\
+       has_tallied inc_calls = false) /\
 
       length (public_keys cstate) = FMap.size (registered_voters cstate) /\
       public_keys cstate = map snd (signups inc_calls) /\
@@ -403,9 +409,11 @@ Theorem boardroom_voting_correct_strong
                                 (reconstructed_key pks (voter_index inf))
                                 (sks addr)
                                 (svs addr))) /\
-       (result cstate = None \/
-        result cstate = Some (sumnat (fun party => if svs party then 1 else 0)%nat
-                                     (FMap.keys (registered_voters cstate))))).
+       ((has_tallied inc_calls = false ->
+         result cstate = None) /\
+        (has_tallied inc_calls = true ->
+         result cstate = Some (sumnat (fun party => if svs party then 1 else 0)%nat
+                                     (FMap.keys (registered_voters cstate)))))).
 Proof.
   contract_induction; intros.
   - [AddBlockFacts]: exact (fun _ old_slot _ _ new_slot _ => old_slot < new_slot).
@@ -428,7 +436,7 @@ Proof.
     intros _ index_assum pks_assum.
     rewrite FMap.elements_empty.
     split; [auto|].
-    split; [|tauto].
+    split; [|easy].
     intros ? ? find.
     now rewrite FMap.find_empty in find.
   - auto.
@@ -451,6 +459,7 @@ Proof.
       apply Z.ltb_lt in lt.
       rewrite app_length in *.
       cbn.
+      fold (has_tallied prev_inc_calls).
       fold (signups prev_inc_calls).
       rewrite app_length, map_app; cbn.
       split; [destruct_and_split; congruence|].
@@ -477,9 +486,10 @@ Proof.
         }
         split; cycle 1.
         {
-          left.
-          apply cur_lt.
-          lia.
+          split; [easy|].
+          intros tallied.
+          specialize (cur_lt ltac:(lia)).
+          congruence.
         }
         intros addr inf find_add.
         destruct (address_eqb_spec addr (ctx_from ctx)) as [->|].
@@ -586,7 +596,8 @@ Proof.
       intros [_ msg_assum] order_assum num_signups_assum.
       split; [tauto|].
       split; [tauto|].
-      right.
+      split; [easy|].
+      intros _.
       apply f_equal.
       destruct IH as [finish_before_vote [_ [len_pks [pks_signups [party_count IH]]]]].
       specialize (IH msg_assum order_assum num_signups_assum).
@@ -667,21 +678,22 @@ Theorem boardroom_voting_correct
       contract_state bstate caddr = Some cstate /\
       incoming_calls Msg trace caddr = Some inc_calls /\
 
-      ((* assuming that the message sent were created with the
+      (* assuming that the message sent were created with the
           functions provided by this smart contract *)
-       MsgAssumption pks index sks svs inc_calls ->
+      MsgAssumption pks index sks svs inc_calls ->
 
-       (* ..and that people signed up in the order given by 'index'
+      (* ..and that people signed up in the order given by 'index'
           and 'pks' *)
-       SignupOrderAssumption pks index inc_calls ->
+      SignupOrderAssumption pks index inc_calls ->
 
-       (* ..and that the correct number of people register *)
-       (finish_registration_by (setup cstate) < Blockchain.current_slot bstate ->
-        length pks = length (signups inc_calls)) ->
+      (* ..and that the correct number of people register *)
+      (finish_registration_by (setup cstate) < Blockchain.current_slot bstate ->
+       length pks = length (signups inc_calls)) ->
 
-       (* we have that the contract either has not computed the
-          result, or has computed the correct result *)
-       (result cstate = None \/
+      (* then if we have not tallied yet, the result is none *)
+      ((has_tallied inc_calls = false -> result cstate = None) /\
+       (* or if we have tallied yet, the result is correct *)
+       (has_tallied inc_calls = true ->
         result cstate = Some (sumnat (fun party => if svs party then 1 else 0)%nat
                                      (FMap.keys (registered_voters cstate))))).
 Proof.
