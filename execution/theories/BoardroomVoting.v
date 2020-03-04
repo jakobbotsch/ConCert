@@ -652,7 +652,7 @@ Qed.
 Theorem boardroom_voting_correct
         bstate caddr (trace : ChainTrace empty_state bstate)
         (* list of all public keys, in the order of signups *)
-        (pks : list Z)
+        (pks : list A)
         (* function mapping a party to his signup index *)
         (index : Address -> nat)
         (* function mapping a party to his secret key *)

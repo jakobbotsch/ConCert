@@ -1,33 +1,47 @@
 From Bignums Require Import BigN.
 From Bignums Require Import BigZ.
-From Coq Require Import Cyclic31.
-From Coq Require Import Cyclic63.
-From Coq Require Int31.
-From Coq Require Int63.
+From Coq Require Import ZArith.
+From Coq Require Import DoubleType.
 Require Import Monads.
 Require Import Serializable.
 
-Global Instance int31_serializable : Serializable int31.
-Proof.
-  refine
-    {| serialize i := serialize (Int31.phi i);
-       deserialize p := do z <- deserialize p; ret (Int31.phi_inv z); |}.
-  intros i.
-  rewrite deserialize_serialize.
-  cbn -[phi phi_inv].
-  now rewrite phi_inv_phi.
-Defined.
+Section IntSer.
+  Definition int_serializable
+             (T := BigN.dom_t 0)
+             (to_Z : T -> Z)
+             (of_Z : Z -> T)
+             (of_to_Z : forall t, of_Z (to_Z t) = t) : Serializable T.
+  Proof.
+    refine
+      {| serialize t := serialize (to_Z t);
+         deserialize p := do z <- deserialize p; ret (of_Z z); |}.
+    intros x.
+    rewrite deserialize_serialize.
+    cbn.
+    now rewrite of_to_Z.
+  Defined.
 
-Global Instance int63_serializable : Serializable Int63.int.
-Proof.
-  refine
-    {| serialize i := serialize (Int63.to_Z i);
-       deserialize p := do z <- deserialize p; ret (Int63.of_Z z); |}.
-  intros i.
-  rewrite deserialize_serialize.
-  cbn -[Int63.to_Z Int63.of_Z].
-  now rewrite of_to_Z.
-Defined.
+  (* Massive hack: ltac inside notation is only checked at expansion time.
+   This allows the proof below to work for Coq 8.10 where Bignums uses int63
+   and Coq 8.9 where Bignums uses int31 and int63 does not even exist. *)
+  Local Set Warnings "-non-reversible-notation".
+  Notation "'lazyexp' x" := ltac:(exact x) (at level 70).
+
+  Global Instance int_serializable_inst : Serializable (BigN.dom_t 0).
+  Proof.
+    first
+      [exact
+         (int_serializable
+            (lazyexp Int31.phi)
+            (lazyexp Int31.phi_inv)
+            (lazyexp Cyclic31.phi_inv_phi))|
+       exact
+         (int_serializable
+            (lazyexp Int63.to_Z)
+            (lazyexp Int63.of_Z)
+            (lazyexp Int63.of_to_Z))].
+  Defined.
+End IntSer.
 
 Global Instance zn2z_serializable {A} `{Serializable A} : Serializable (zn2z A).
 Proof.
