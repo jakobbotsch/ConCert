@@ -7,11 +7,12 @@ From Coq Require Import SetoidTactics.
 From Coq Require Import Field.
 From Coq Require Import ZArith.
 From Coq Require Import Znumtheory.
-From Coqprime Require Import Zp.
 From Bignums Require Import BigZ.
 From Equations Require Import Equations.
 Import List.
 
+Require Import Egcd.
+Require Import Euler.
 Require Import Extras.
 Import ListNotations.
 
@@ -954,7 +955,7 @@ Module Zp.
     mod_pow_pos_aux a x m 1.
 
   Definition mod_inv (a : Z) (p : Z) : Z :=
-    mod_pow_pos a (Z.to_pos (p - 2)) p.
+    fst (egcd a p) mod p.
 
   Definition mod_pow (a x p : Z) : Z :=
     match x with
@@ -1048,9 +1049,6 @@ Module Zp.
   Lemma mod_pow_pos_0_r a x :
     mod_pow_pos a x 0 = 0.
   Proof. apply mod_pow_pos_aux_0_r. Qed.
-  Lemma mod_inv_0_r a :
-    mod_inv a 0 = 0.
-  Proof. apply mod_pow_pos_0_r. Qed.
   Lemma mod_pow_0_r a x :
     mod_pow a x 0 = 0.
   Proof.
@@ -1102,16 +1100,6 @@ Module Zp.
     now rewrite Z.mul_1_l in H.
   Qed.
 
-  Lemma mod_pow_spec a x p :
-    x >= 0 ->
-    mod_pow a x p = a^x mod p.
-  Proof.
-    intros xp.
-    unfold mod_pow.
-    destruct x; try lia.
-    now rewrite mod_pow_pos_spec by lia.
-  Qed.
-
   Lemma Z_pow_mod_idemp a x p :
     (a mod p)^x mod p = a^x mod p.
   Proof.
@@ -1137,19 +1125,6 @@ Module Zp.
     mod_pow_pos (a mod p) x p = mod_pow_pos a x p.
   Proof. apply mod_pow_pos_aux_mod_idemp. Qed.
 
-  Lemma mod_inv_mod_idemp a p :
-    mod_inv (a mod p) p = mod_inv a p.
-  Proof. apply mod_pow_pos_mod_idemp. Qed.
-
-  Lemma mod_pow_mod_idemp a x p :
-    mod_pow (a mod p) x p = mod_pow a x p.
-  Proof.
-    unfold mod_pow.
-    destruct p; auto.
-    all: destruct x; auto.
-    all: now rewrite mod_pow_pos_mod_idemp by lia.
-  Qed.
-
   Lemma mod_pow_pos_aux_mod a x p r :
     mod_pow_pos_aux a x p r mod p = mod_pow_pos_aux a x p r.
   Proof.
@@ -1163,7 +1138,10 @@ Module Zp.
   Proof. apply mod_pow_pos_aux_mod. Qed.
   Lemma mod_inv_mod a p :
     mod_inv a p mod p = mod_inv a p.
-  Proof. apply mod_pow_pos_mod. Qed.
+  Proof.
+    unfold mod_inv.
+    now rewrite Zmod_mod.
+  Qed.
 
   Lemma mod_pow_mod a x p :
     mod_pow a x p mod p = mod_pow a x p.
@@ -1176,124 +1154,20 @@ Module Zp.
       + now rewrite mod_inv_mod.
   Qed.
 
-  Lemma mod_pow_pos_fermat a p :
+  Lemma gcd_prime a p :
     prime p ->
     a mod p <> 0 ->
-    mod_pow_pos a (Z.to_pos (p - 1)) p = 1.
+    Z.gcd a p = 1.
   Proof.
-    intros isprime ap.
-    pose proof (prime_ge_2 _ isprime).
-    rewrite mod_pow_pos_spec.
-    rewrite Z.pow_pos_fold.
-    rewrite Z2Pos.id by lia.
-    (* Use proof of Euler's theorem from Coqprime *)
-    rewrite <- (Euler.prime_phi_n_minus_1 _ isprime).
-    apply phi_power_is_1; try lia.
+    intros isprime ap0.
+    apply Zgcd_1_rel_prime.
     apply rel_prime_sym.
     apply prime_rel_prime; auto.
-    intros div.
-    pose proof (Zdivide_mod _ _ div).
-    tauto.
-  Qed.
-
-  Lemma mod_pow_fermat a p :
-    prime p ->
-    a mod p <> 0 ->
-    mod_pow a (p - 1) p = 1.
-  Proof.
-    intros isprime ap.
+    intros divides.
     pose proof (prime_ge_2 _ isprime).
-    pose proof (mod_pow_pos_fermat _ _ isprime ap).
-    destruct p; try lia.
-    destruct (Z.pos p - 1) eqn:?; try lia.
-    assumption.
-  Qed.
-
-  Lemma mod_pow_pos_exp_plus a x x' p :
-    mod_pow_pos a (x + x') p = mod_pow_pos a x p * mod_pow_pos a x' p mod p.
-  Proof.
-    destruct (Z.eq_dec p 0) as [->|?].
-    - now rewrite !mod_pow_pos_0_r.
-    - rewrite !mod_pow_pos_spec by auto.
-      rewrite !Z.pow_pos_fold.
-      rewrite Pos2Z.inj_add.
-      rewrite Z.pow_add_r by lia.
-      now rewrite Z.mul_mod by auto.
-  Qed.
-  Lemma mod_pow_pos_exp_mul a x x' p :
-    mod_pow_pos a (x * x') p = mod_pow_pos (mod_pow_pos a x p) x' p.
-  Proof.
-    destruct (Z.eq_dec p 0) as [->|?].
-    - now rewrite !mod_pow_pos_0_r.
-    - rewrite !mod_pow_pos_spec by auto.
-      rewrite !Z.pow_pos_fold.
-      rewrite Pos2Z.inj_mul.
-      rewrite Z_pow_mod_idemp.
-      now rewrite <- Z.pow_mul_r by lia.
-  Qed.
-
-  Lemma mod_pow_pos_aux_1_l x p r :
-    mod_pow_pos_aux 1 x p r = r mod p.
-  Proof.
-    destruct (Z.eq_dec p 0) as [->|?].
-    - now rewrite mod_pow_pos_aux_0_r, Zmod_0_r.
-    - revert r.
-      induction x; intros r; cbn.
-      + rewrite mod_pow_pos_aux_mod_idemp.
-        rewrite Z.mul_1_r.
-        rewrite IHx.
-        apply Z.mod_mod; auto.
-      + rewrite mod_pow_pos_aux_mod_idemp.
-        apply IHx.
-      + now rewrite Z.mul_1_r.
-  Qed.
-  Lemma mod_pow_pos_1_l x p :
-    mod_pow_pos 1 x p = 1 mod p.
-  Proof. apply mod_pow_pos_aux_1_l. Qed.
-  Lemma mod_inv_1_l p :
-    mod_inv 1 p = 1 mod p.
-  Proof. apply mod_pow_pos_1_l. Qed.
-  Lemma mod_pow_1_l x p :
-    mod_pow 1 x p = 1 mod p.
-  Proof.
-    destruct x; auto; cbn.
-    - apply mod_pow_pos_1_l.
-    - rewrite mod_pow_pos_1_l, mod_inv_mod_idemp.
-      apply mod_inv_1_l.
-  Qed.
-
-  Lemma mod_pow_pos_aux_1_r a p r :
-    mod_pow_pos_aux a 1 p r = a * r mod p.
-  Proof.
-    cbn.
-    now rewrite Z.mul_comm.
-  Qed.
-  Lemma mod_pow_pos_1_r a p :
-    mod_pow_pos a 1 p = a mod p.
-  Proof.
-    cbn -[Z.mul].
-    now rewrite Z.mul_1_l.
-  Qed.
-  Lemma mod_pow_1_r a p :
-    mod_pow a 1 p = a mod p.
-  Proof.
-    cbn -[Z.mul].
-    now rewrite Z.mul_1_l.
-  Qed.
-
-  Lemma mod_pow_pos_succ_r a x p :
-    a * mod_pow_pos a x p mod p = mod_pow_pos a (Pos.succ x) p.
-  Proof.
-    destruct (Z.eq_dec p 0) as [->|?].
-    - rewrite !mod_pow_pos_0_r.
-      now rewrite Zmod_0_r.
-    - rewrite !mod_pow_pos_spec, !Z.pow_pos_fold.
-      cbn.
-      rewrite Z.mul_mod_idemp_r by lia.
-      rewrite Z.pow_pos_fold.
-      rewrite <- Z.pow_succ_r by lia.
-      cbn.
-      now rewrite <- Pos.add_1_r.
+    apply Z.mod_divide in divides.
+    - congruence.
+    - lia.
   Qed.
 
   Lemma mul_mod_inv a p :
@@ -1304,15 +1178,36 @@ Module Zp.
     intros isprime ap0.
     pose proof (prime_ge_2 _ isprime).
     unfold mod_inv.
-    rewrite mod_pow_pos_succ_r.
-    destruct (Z.eq_dec p 2) as [->|?].
-    - cbn.
-      pose proof (Z.mod_pos_bound a 2 ltac:(lia)).
-      rewrite Z.mul_mod by discriminate.
-      now replace (a mod 2) with 1 in * by lia.
-    - rewrite <- Z2Pos.inj_succ by lia.
-      replace (Z.succ (p - 2)) with (p - 1) by lia.
-      apply mod_pow_pos_fermat; auto.
+    rewrite Z.mul_mod_idemp_r by lia.
+    pose proof (egcd_spec a p).
+    destruct (egcd a p) as [x y]; cbn.
+    rewrite gcd_prime in H0 by auto.
+    replace (a * x) with (1  + (-y)*p) by lia.
+    rewrite <- Z.add_mod_idemp_r by lia.
+    rewrite Z.mod_mul, Z.add_0_r by lia.
+    now rewrite Z.mod_1_l by lia.
+  Qed.
+
+  Lemma mod_mul_both_l a b c p :
+    prime p ->
+    c mod p <> 0 ->
+    (c * a mod p = c * b mod p <-> a mod p = b mod p).
+  Proof.
+    intros isprime cp0.
+    pose proof (prime_ge_2 _ isprime).
+    split.
+    - intros eq.
+      rewrite <- (Z.mul_1_l a).
+      rewrite <- (Z.mul_1_l b).
+      rewrite <- (mul_mod_inv c _ isprime cp0).
+      rewrite !Z.mul_mod_idemp_l by lia.
+      rewrite (Z.mul_comm c).
+      rewrite <- 2!Z.mul_assoc.
+      rewrite <- (Z.mul_mod_idemp_r _ (c * a)) by lia.
+      rewrite <- (Z.mul_mod_idemp_r _ (c * b)) by lia.
+      now rewrite eq.
+    - intros eq.
+      now rewrite <- Z.mul_mod_idemp_r, eq, Z.mul_mod_idemp_r by lia.
   Qed.
 
   Lemma mul_mod_nonzero a b p :
@@ -1373,8 +1268,13 @@ Module Zp.
     a mod p <> 0 ->
     mod_inv a p <> 0.
   Proof.
-    intros isprime ap0.
-    apply mod_pow_pos_nonzero; auto.
+    intros isprime ap0 iszero.
+    pose proof (prime_ge_2 _ isprime).
+    rewrite <- (Z.mod_0_l p) in iszero by lia.
+    rewrite <- mod_inv_mod in iszero.
+    apply (mod_mul_both_l _ _ a p isprime ap0) in iszero.
+    rewrite mul_mod_inv in iszero by auto.
+    rewrite Z.mul_0_r, Z.mod_0_l in iszero; easy.
   Qed.
   Hint Resolve mod_inv_nonzero : core.
   Lemma mod_pow_nonzero a x p :
@@ -1402,25 +1302,145 @@ Module Zp.
     mod_pow a x p <> 0 ->
     mod_pow a x p mod p <> 0.
   Proof. rewrite mod_pow_mod; auto. Qed.
-  Hint Resolve mod_pow_pos_mod_nonzero mod_inv_mod_nonzero mod_pow_mod_nonzero : core.
-
-  Lemma mod_mul_both_l a b c p :
+  Lemma one_nonzero p :
     prime p ->
-    c mod p <> 0 ->
-    c * a mod p = c * b mod p ->
-    a mod p = b mod p.
+    1 mod p <> 0.
   Proof.
-    intros isprime cp0 eq.
+    intros isprime.
     pose proof (prime_ge_2 _ isprime).
-    rewrite <- (Z.mul_1_l a).
-    rewrite <- (Z.mul_1_l b).
-    rewrite <- (mul_mod_inv c _ isprime cp0).
-    rewrite !Z.mul_mod_idemp_l by lia.
-    rewrite (Z.mul_comm c).
-    rewrite <- 2!Z.mul_assoc.
-    rewrite <- (Z.mul_mod_idemp_r _ (c * a)) by lia.
-    rewrite <- (Z.mul_mod_idemp_r _ (c * b)) by lia.
-    now rewrite eq.
+    now rewrite Z.mod_1_l by lia.
+  Qed.
+  Hint Resolve mod_pow_pos_mod_nonzero mod_inv_mod_nonzero mod_pow_mod_nonzero one_nonzero : core.
+
+  Lemma mod_inv_mod_idemp a p :
+    prime p ->
+    a mod p <> 0 ->
+    mod_inv (a mod p) p = mod_inv a p.
+  Proof.
+    intros isprime ap0.
+    pose proof (prime_ge_2 _ isprime).
+    rewrite <- mod_inv_mod, <- (mod_inv_mod a).
+    apply mod_mul_both_l with a; auto.
+    rewrite <- Z.mul_mod_idemp_l by lia.
+    now rewrite !mul_mod_inv by auto.
+  Qed.
+
+  Lemma mod_pow_mod_idemp a x p :
+    mod_pow (a mod p) x p = mod_pow a x p.
+  Proof.
+    unfold mod_pow.
+    destruct p; auto.
+    all: destruct x; auto.
+    all: now rewrite mod_pow_pos_mod_idemp by lia.
+  Qed.
+
+  Lemma mod_pow_pos_fermat a p :
+    prime p ->
+    a mod p <> 0 ->
+    mod_pow_pos a (Z.to_pos (p - 1)) p = 1.
+  Proof.
+    intros isprime ap.
+    pose proof (prime_ge_2 _ isprime).
+    rewrite mod_pow_pos_spec.
+    rewrite Z.pow_pos_fold.
+    rewrite Z2Pos.id by lia.
+    now apply fermat.
+  Qed.
+
+  Lemma mod_pow_fermat a p :
+    prime p ->
+    a mod p <> 0 ->
+    mod_pow a (p - 1) p = 1.
+  Proof.
+    intros isprime ap.
+    pose proof (prime_ge_2 _ isprime).
+    pose proof (mod_pow_pos_fermat _ _ isprime ap).
+    destruct p; try lia.
+    destruct (Z.pos p - 1) eqn:?; try lia.
+    assumption.
+  Qed.
+
+  Lemma mod_pow_pos_exp_plus a x x' p :
+    mod_pow_pos a (x + x') p = mod_pow_pos a x p * mod_pow_pos a x' p mod p.
+  Proof.
+    destruct (Z.eq_dec p 0) as [->|?].
+    - now rewrite !mod_pow_pos_0_r.
+    - rewrite !mod_pow_pos_spec by auto.
+      rewrite !Z.pow_pos_fold.
+      rewrite Pos2Z.inj_add.
+      rewrite Z.pow_add_r by lia.
+      now rewrite Z.mul_mod by auto.
+  Qed.
+  Lemma mod_pow_pos_exp_mul a x x' p :
+    mod_pow_pos a (x * x') p = mod_pow_pos (mod_pow_pos a x p) x' p.
+  Proof.
+    destruct (Z.eq_dec p 0) as [->|?].
+    - now rewrite !mod_pow_pos_0_r.
+    - rewrite !mod_pow_pos_spec by auto.
+      rewrite !Z.pow_pos_fold.
+      rewrite Pos2Z.inj_mul.
+      rewrite Z_pow_mod_idemp.
+      now rewrite <- Z.pow_mul_r by lia.
+  Qed.
+
+  Lemma mod_pow_pos_aux_1_l x p r :
+    mod_pow_pos_aux 1 x p r = r mod p.
+  Proof.
+    destruct (Z.eq_dec p 0) as [->|?].
+    - now rewrite mod_pow_pos_aux_0_r, Zmod_0_r.
+    - revert r.
+      induction x; intros r; cbn.
+      + rewrite mod_pow_pos_aux_mod_idemp.
+        rewrite Z.mul_1_r.
+        rewrite IHx.
+        apply Z.mod_mod; auto.
+      + rewrite mod_pow_pos_aux_mod_idemp.
+        apply IHx.
+      + now rewrite Z.mul_1_r.
+  Qed.
+  Lemma mod_pow_pos_1_l x p :
+    mod_pow_pos 1 x p = 1 mod p.
+  Proof. apply mod_pow_pos_aux_1_l. Qed.
+  Lemma mod_inv_1_l p :
+    prime p ->
+    mod_inv 1 p = 1 mod p.
+  Proof.
+    intros isprime.
+    pose proof (prime_ge_2 _ isprime).
+    rewrite <- mod_inv_mod.
+    apply mod_mul_both_l with 1; auto.
+    rewrite mul_mod_inv by auto.
+    cbn.
+    now rewrite Z.mod_1_l by lia.
+  Qed.
+  Lemma mod_pow_1_l x p :
+    prime p ->
+    mod_pow 1 x p = 1 mod p.
+  Proof.
+    intros isprime.
+    destruct x; auto; cbn.
+    - apply mod_pow_pos_1_l.
+    - rewrite mod_pow_pos_1_l, mod_inv_mod_idemp by auto.
+      now apply mod_inv_1_l.
+  Qed.
+
+  Lemma mod_pow_pos_aux_1_r a p r :
+    mod_pow_pos_aux a 1 p r = a * r mod p.
+  Proof.
+    cbn.
+    now rewrite Z.mul_comm.
+  Qed.
+  Lemma mod_pow_pos_1_r a p :
+    mod_pow_pos a 1 p = a mod p.
+  Proof.
+    cbn -[Z.mul].
+    now rewrite Z.mul_1_l.
+  Qed.
+  Lemma mod_pow_1_r a p :
+    mod_pow a 1 p = a mod p.
+  Proof.
+    cbn -[Z.mul].
+    now rewrite Z.mul_1_l.
   Qed.
 
   Lemma mod_inv_mul a b p :
@@ -1431,12 +1451,31 @@ Module Zp.
   Proof.
     intros isprime ap0 bp0.
     pose proof (prime_ge_2 _ isprime).
-    unfold mod_inv.
-    rewrite !mod_pow_pos_spec, !Z.pow_pos_fold.
-    rewrite Z.pow_mul_l.
-    rewrite Z.mul_mod by lia.
-    rewrite <- !Z.pow_pos_fold, <- !mod_pow_pos_spec.
-    now rewrite Z.mul_comm.
+    rewrite <- mod_inv_mod.
+    apply mod_mul_both_l with (a * b); auto.
+    rewrite mul_mod_inv by auto.
+    rewrite <- Z.mul_assoc, (Z.mul_assoc b).
+    rewrite <- Z.mul_mod_idemp_r by lia.
+    rewrite <- (Z.mul_mod_idemp_l (b * _)) by lia.
+    rewrite Z.mul_mod_idemp_r by lia.
+    rewrite mul_mod_inv by auto.
+    rewrite Z.mul_1_l.
+    now rewrite mul_mod_inv by auto.
+  Qed.
+
+  Lemma mod_pow_pos_succ_r a x p :
+    a * mod_pow_pos a x p mod p = mod_pow_pos a (Pos.succ x) p.
+  Proof.
+    destruct (Z.eq_dec p 0) as [->|?].
+    - rewrite !mod_pow_pos_0_r.
+      now rewrite Zmod_0_r.
+    - rewrite !mod_pow_pos_spec, !Z.pow_pos_fold.
+      cbn.
+      rewrite Z.mul_mod_idemp_r by lia.
+      rewrite Z.pow_pos_fold.
+      rewrite <- Z.pow_succ_r by lia.
+      cbn.
+      now rewrite <- Pos.add_1_r.
   Qed.
 
   Lemma mod_pow_succ a x p :
@@ -1458,7 +1497,7 @@ Module Zp.
       destruct (Pos.eq_dec p0 1) as [->|?].
       + cbn -[Z.mul].
         rewrite Z.mul_1_l.
-        rewrite mod_inv_mod_idemp.
+        rewrite mod_inv_mod_idemp by auto.
         rewrite mul_mod_inv by auto.
         now rewrite Z.mod_1_l by lia.
       + rewrite Z.pos_sub_lt by lia.
@@ -1471,7 +1510,7 @@ Module Zp.
         rewrite mul_mod_inv by auto.
         rewrite <- mod_inv_mul by auto.
         rewrite Z.mul_comm.
-        rewrite <- mod_inv_mod_idemp.
+        rewrite <- mod_inv_mod_idemp by auto.
         rewrite mod_pow_pos_succ_r.
         replace (Pos.succ (p0 - 1)) with p0 by lia.
         now rewrite Z.mul_1_l, mod_inv_mod.
@@ -1548,7 +1587,13 @@ Module Zp.
       auto.
     - apply mod_pow_pos_exp_mul.
     - now rewrite mod_pow_pos_exp_mul.
-    - unfold mod_inv.
+    - rewrite mod_pow_pos_exp_mul.
+      rewrite <- mod_inv_mod by auto.
+      rewrite <- (mod_pow_pos_mod (mod_inv _ _)) by auto.
+      apply mod_mul_both_l with (mod_pow_pos (mod_pow_pos a p0 p) p1 p); auto.
+      rewrite mul_mod_inv by auto.
+      rewrite <-
+      rewrite <- mod_pow_pos_exp_plus.
       rewrite <- !mod_pow_pos_exp_mul.
       rewrite <- Pos.mul_assoc.
       now rewrite (Pos.mul_comm p1).
@@ -1573,7 +1618,7 @@ Module Zp.
     pose proof (prime_ge_2 _ isprime).
     destruct x; auto.
     - cbn.
-      rewrite mod_inv_mod_idemp.
+      rewrite mod_inv_mod_idemp by auto.
       now rewrite mod_inv_1_l.
     - cbn.
       rewrite mod_inv_involutive by auto.
@@ -1597,6 +1642,7 @@ Module Zp.
 
   Definition boardroom_axioms (p : Z) :
     prime p -> BoardroomAxioms Z.
+
   Proof.
     intros isprime.
     pose proof (prime_ge_2 _ isprime).

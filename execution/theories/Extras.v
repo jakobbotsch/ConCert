@@ -779,3 +779,45 @@ Proof.
   rewrite nth_error_app2 by lia.
   now replace (length l - length l) with 0 by lia.
 Qed.
+
+Lemma NoDup_filter {A} (f : A -> bool) l :
+  NoDup l ->
+  NoDup (filter f l).
+Proof.
+  intros nodup.
+  induction nodup; cbn.
+  - constructor.
+  - destruct (f x) eqn:fx; auto.
+    constructor; auto.
+    rewrite filter_In.
+    tauto.
+Qed.
+
+Lemma NoDup_map {A B} (f : A -> B) l :
+  NoDup l ->
+  (forall a a', In a l -> In a' l -> f a = f a' -> a = a') ->
+  NoDup (map f l).
+Proof.
+  intros nodup.
+  induction nodup; cbn; intros inj.
+  - constructor.
+  - constructor; auto.
+    rewrite in_map_iff.
+    intros ex.
+    destruct ex as [x' [fxeq inxl]].
+    contradiction H.
+    replace x with x'; [assumption|].
+    apply inj; auto.
+Qed.
+
+Lemma filter_all {A} (f : A -> bool) (l : list A) :
+  (forall a, In a l -> f a = true) ->
+  filter f l = l.
+Proof.
+  induction l as [|x xs IH]; [easy|]; intros all.
+  cbn.
+  rewrite all by (now left).
+  apply f_equal; apply IH.
+  intros a ain.
+  apply all; right; auto.
+Qed.

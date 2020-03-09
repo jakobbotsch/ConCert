@@ -18,7 +18,9 @@ execution/theories/Congress.v
 execution/theories/Congress_Buggy.v
 execution/theories/Containers.v
 execution/theories/ContractMonads.v
+execution/theories/Egcd.v
 execution/theories/Escrow.v
+execution/theories/Euler.v
 execution/theories/Extras.v
 execution/theories/Finite.v
 execution/theories/LocalBlockchain.v
