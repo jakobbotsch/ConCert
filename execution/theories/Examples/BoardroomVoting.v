@@ -21,6 +21,7 @@ Require Import Serializable.
 
 Import ListNotations.
 Import RecordSetNotations.
+Import BoardroomMathNotations.
 
 Section BoardroomVoting.
 Context `{Base : ChainBase}.
@@ -29,10 +30,8 @@ Context {A : Type}.
 Context `(H : A -> Z).
 Context {ser : Serializable A}.
 Context {axioms : BoardroomAxioms A}.
-Context {generator : Generator axioms}.
-Context {discr_log : DiscreteLog axioms generator}.
-
-Local Open Scope ffield.
+Context {gen : Generator _}.
+Context {discr_log : DiscreteLog _ _}.
 
 (* Allow us to automatically derive Serializable instances *)
 Set Nonrecursive Elimination Schemes.
@@ -64,7 +63,7 @@ Record State :=
   }.
 
 Inductive Msg :=
-| signup (pk : A)
+| signup (pk : A) (proof : A * A)
 | commit_to_vote (hash : Z)
 | submit_vote (v : A) (proof : Z)
 | tally_votes.
@@ -102,9 +101,28 @@ Class VoteProofScheme :=
 
 Context `{VoteProofScheme}.
 
-Local Open Scope Z.
-
 Import ContractMonads.
+
+Local Open Scope broom.
+(* This follows the original open vote protocol paper. It is a schnorr signature
+     with the fiat-shamir heuristic applied. *)
+Definition knows_secret_key_proof (H : positive -> positive) (sk : Z) (v : Z) (i : nat) : Z * Z :=
+  let gv := generator^v in
+  let pk := compute_public_key sk in
+  let z := Zpos (H (countable.encode (generator, gv, pk, i))) in
+  let r := v + (opp (sk * z)) in
+  (gv, r).
+
+Definition make_signup_msg (sk : Z) : Msg :=
+  signup (compute_public_key sk).
+
+Definition make_commit_msg (pks : list A) (my_index : nat) (sk : Z) (sv : bool) : Msg :=
+  commit_to_vote (H (compute_public_vote (reconstructed_key pks my_index) sk sv)).
+
+Definition make_vote_msg (pks : list A) (my_index : nat) (sk : Z) (sv : bool) : Msg :=
+  submit_vote (compute_public_vote (reconstructed_key pks my_index) sk sv)
+              (make_vote_proof pks my_index sk sv).
+
 
 Definition init : ContractIniter Setup State :=
   do owner <- lift caller_addr;
@@ -123,7 +141,7 @@ Definition receive : ContractReceiver State Msg State :=
   do cur_slot <- lift current_slot;
   do msg <- call_msg >>= lift;
   match msg with
-  | signup pk =>
+  | signup pk '( =>
     do lift (if finish_registration_by (setup state) <? cur_slot then None else Some tt)%nat;
     do lift (if FMap.find caller (eligible_voters (setup state)) then Some tt else None);
     do lift (if FMap.find caller (registered_voters state) then None else Some tt);
@@ -199,16 +217,6 @@ Proof with cbn -[Nat.ltb].
       destruct (existsb _ _); auto.
       destruct (bruteforce_tally _); auto.
 Defined.
-
-Definition make_signup_msg (sk : Z) : Msg :=
-  signup (compute_public_key sk).
-
-Definition make_commit_msg (pks : list A) (my_index : nat) (sk : Z) (sv : bool) : Msg :=
-  commit_to_vote (H (compute_public_vote (reconstructed_key pks my_index) sk sv)).
-
-Definition make_vote_msg (pks : list A) (my_index : nat) (sk : Z) (sv : bool) : Msg :=
-  submit_vote (compute_public_vote (reconstructed_key pks my_index) sk sv)
-              (make_vote_proof pks my_index sk sv).
 
 Section Theories.
 
