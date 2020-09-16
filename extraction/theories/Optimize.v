@@ -492,6 +492,16 @@ Definition analyze_constant
   | None => (map is_box_or_any (decompose_TArr (cst_type cst).2).1, inds)
   end.
 
+Definition initial_mib_masks (mib : mutual_inductive_body) : mib_masks :=
+  let ctor_masks :=
+      List.concat
+        (mapi (fun ind oib =>
+                 mapi (fun c '(_, args) =>
+                         (ind, c, map is_box_or_any (skipn (ind_npars mib) args)))
+                      (ind_ctors oib))
+              (ind_bodies mib)) in
+  {| param_mask := List.repeat true (ind_npars mib); ctor_masks := ctor_masks |}.
+
 Record dearg_set := {
   const_masks : list (kername * bitmask);
   ind_masks : list (kername * mib_masks); }.
@@ -507,16 +517,7 @@ Fixpoint analyze_env (Σ : global_env) : dearg_set :=
           let '(mask, inds) := analyze_constant cst inds in
           ((kn, mask) :: consts, inds)
         | InductiveDecl _ mib =>
-          let ctor_masks :=
-              List.concat
-                (mapi (fun ind oib =>
-                         mapi (fun c '(_, args) =>
-                                 (ind, c, map is_box_or_any (skipn (ind_npars mib) args)))
-                              (ind_ctors oib))
-                      (ind_bodies mib)) in
-          let mm := {| param_mask := List.repeat true (ind_npars mib);
-                       ctor_masks := ctor_masks |} in
-          (consts, (kn, mm) :: inds)
+          (consts, (kn, initial_mib_masks mib) :: inds)
         | TypeAliasDecl _ => (consts, inds)
         end in
     {| const_masks := consts; ind_masks := inds |}
