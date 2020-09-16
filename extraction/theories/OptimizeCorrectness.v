@@ -856,8 +856,8 @@ Definition valid_case_masks (ind : inductive) (npars : nat) (brs : list (nat * t
   | Some mm =>
     (#|param_mask mm| =? npars) &&
     alli (fun c '(ar, br) =>
-            (#|get_branch_mask mm ind c| <=? ar) &&
-            (valid_dearg_mask (get_branch_mask mm ind c) br)) 0 brs
+            (#|get_branch_mask mm (inductive_ind ind) c| <=? ar) &&
+            (valid_dearg_mask (get_branch_mask mm (inductive_ind ind) c) br)) 0 brs
   | None => true
   end.
 
@@ -865,7 +865,7 @@ Definition valid_proj (ind : inductive) (npars arg : nat) : bool :=
   match get_mib_masks (inductive_mind ind) with
   | Some mm => (#|param_mask mm| =? npars) &&
                (* Projected argument must not be removed *)
-               negb (nth arg (get_branch_mask mm ind 0) false)
+               negb (nth arg (get_branch_mask mm (inductive_ind ind) 0) false)
   | _ => true
   end.
 
@@ -3206,12 +3206,12 @@ Proof.
         cbn in *.
         replace
           (skipn (count_zeros (param_mask m))
-                 (masked (param_mask m ++ get_branch_mask m ind c) (map dearg args)))
+                 (masked (param_mask m ++ get_branch_mask m (inductive_ind ind) c) (map dearg args)))
           with
-            (masked (get_branch_mask m ind c)
+            (masked (get_branch_mask m (inductive_ind ind) c)
                              (skipn #|param_mask m| (map dearg args))); cycle 1.
         { clear.
-          generalize (get_branch_mask m ind c) as m2.
+          generalize (get_branch_mask m (inductive_ind ind) c) as m2.
           generalize (map dearg args) as ts.
           generalize (param_mask m) as m1.
           intros m1 ts m2.
@@ -3267,7 +3267,7 @@ Proof.
       (* Singleton pattern match *)
       subst brs; cbn in *; propify.
       set (branch_mask := match get_mib_masks (inductive_mind ind) with
-                          | Some mm => get_branch_mask mm ind 0
+                          | Some mm => get_branch_mask mm (inductive_ind ind) 0
                           | None => []
                           end).
       apply (eval_iota_sing _ _ _ _ _ (n - count_ones branch_mask)
@@ -3282,7 +3282,7 @@ Proof.
           - clear -valid_brs_masks.
             cbn in *; propify.
             destruct valid_brs_masks as (_ & (bound & _) & _).
-            change (get_branch_mask m ind 0) with branch_mask in bound.
+            change (get_branch_mask m (inductive_ind ind) 0) with branch_mask in bound.
             induction branch_mask in n, bound |- *; cbn in *.
             + now rewrite Nat.sub_0_r.
             + destruct n; [easy|].
@@ -3425,8 +3425,10 @@ Proof.
         rewrite Nat.min_l; cycle 1.
         { rewrite masked_length by easy.
           lia. }
-        replace (count_zeros (param_mask m) + (arg - count_ones (firstn arg (get_branch_mask m i 0))) -
-            count_zeros (param_mask m)) with (arg - count_ones (firstn arg (get_branch_mask m i 0)))
+        replace (count_zeros (param_mask m) +
+                 (arg - count_ones (firstn arg (get_branch_mask m (inductive_ind i) 0))) -
+            count_zeros (param_mask m))
+          with (arg - count_ones (firstn arg (get_branch_mask m (inductive_ind i) 0)))
           by lia.
         rewrite nth_error_masked by easy.
         rewrite nth_error_skipn, nth.

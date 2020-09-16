@@ -114,8 +114,8 @@ Fixpoint dearg_single (mask : bitmask) (t : term) (args : list term) : term :=
   end.
 
 (* Get the branch for a branch of an inductive, i.e. without including parameters of the inductive *)
-Definition get_branch_mask (mm : mib_masks) (ind : inductive) (c : nat) : bitmask :=
-  match find (fun '(ind', c', _) => (ind' =? inductive_ind ind) && (c' =? c))
+Definition get_branch_mask (mm : mib_masks) (ind : nat) (c : nat) : bitmask :=
+  match find (fun '(ind', c', _) => (ind' =? ind) && (c' =? c))
              (ctor_masks mm) with
   | Some (_, _, mask) => mask
   | None => []
@@ -124,7 +124,7 @@ Definition get_branch_mask (mm : mib_masks) (ind : inductive) (c : nat) : bitmas
 (* Get mask for a constructor, i.e. combined parameter and branch mask *)
 Definition get_ctor_mask (ind : inductive) (c : nat) : bitmask :=
   match get_mib_masks (inductive_mind ind) with
-  | Some mm => param_mask mm ++ get_branch_mask mm ind c
+  | Some mm => param_mask mm ++ get_branch_mask mm (inductive_ind ind) c
   | None => []
   end.
 
@@ -154,21 +154,21 @@ Definition dearged_npars (mm : option mib_masks) (npars : nat) : nat :=
   end.
 
 Definition dearg_case_branch
-           (mm : mib_masks) (ind : inductive) (c : nat)
+           (mm : mib_masks) (ind : nat) (c : nat)
            (br : nat × term) : nat × term :=
   let mask := get_branch_mask mm ind c in
   (br.1 - count_ones mask, dearg_lambdas mask br.2).
 
 Definition dearg_case_branches
            (mm : option mib_masks)
-           (ind : inductive)
+           (ind : nat)
            (brs : list (nat × term)) :=
   match mm with
   | Some mm => mapi (dearg_case_branch mm ind) brs
   | None => brs
   end.
 
-Definition dearged_proj_arg (mm : option mib_masks) (ind : inductive) (arg : nat) : nat :=
+Definition dearged_proj_arg (mm : option mib_masks) (ind : nat) (arg : nat) : nat :=
   match mm with
   | Some mm => let mask := get_branch_mask mm ind 0 in
                arg - count_ones (firstn arg mask)
@@ -181,11 +181,11 @@ Definition dearg_case
            (discr : term)
            (brs : list (nat * term)) : term :=
   let mm := get_mib_masks (inductive_mind ind) in
-  tCase (ind, dearged_npars mm npars) discr (dearg_case_branches mm ind brs).
+  tCase (ind, dearged_npars mm npars) discr (dearg_case_branches mm (inductive_ind ind) brs).
 
 Definition dearg_proj (ind : inductive) (npars arg : nat) (discr : term) : term :=
   let mm := get_mib_masks (inductive_mind ind) in
-  tProj (ind, dearged_npars mm npars, dearged_proj_arg mm ind arg) discr.
+  tProj (ind, dearged_npars mm npars, dearged_proj_arg mm (inductive_ind ind) arg) discr.
 
 Fixpoint dearg_aux (args : list term) (t : term) : term :=
   match t with
@@ -366,20 +366,18 @@ Definition remove_vars (s : analyze_state) (n : nat) : analyze_state :=
 Definition remove_var (s : analyze_state) : analyze_state :=
   (tl s.1, s.2).
 
-Definition update_mib_masks
-           (s : analyze_state)
+Fixpoint update_mib_masks
            (kn : kername)
-           (mm : mib_masks) : analyze_state :=
-  let fix update_list l :=
-      match l with
-      | [] => []
-      | (kn', mm') :: l =>
-        if eq_kername kn' kn then
-          (kn, mm) :: l
-        else
-          (kn', mm') :: update_list l
-      end in
-  (s.1, update_list s.2).
+           (mm : mib_masks)
+           (im : list (kername × mib_masks)) : list (kername × mib_masks) :=
+  match im with
+  | [] => []
+  | (kn', mm') :: im =>
+    if eq_kername kn' kn then
+      (kn, mm) :: im
+    else
+      (kn', mm') :: update_mib_masks kn mm im
+  end.
 
 Fixpoint update_ind_ctor_mask
          (ind : nat)
@@ -395,13 +393,6 @@ Fixpoint update_ind_ctor_mask
       (ind', c', mask') :: update_ind_ctor_mask ind c ctor_masks f
   end.
 
-Definition fold_lefti {A B} (f : nat -> A -> B -> A) :=
-  fix fold_lefti (n : nat) (l : list B) (a0 : A) :=
-    match l with
-    | [] => a0
-    | b :: t => fold_lefti (S n) t (f n a0 b)
-    end.
-
 Section AnalyzeTop.
   Context (analyze : analyze_state -> term -> analyze_state).
   (* Analyze iterated let-in and lambdas to find dead variables inside body.
@@ -409,7 +400,7 @@ Section AnalyzeTop.
   Fixpoint analyze_top_level
            (state : analyze_state)
            (max_lams : nat)
-           (t : term) {struct t} : bitmask × analyze_state :=
+           (t : term) : bitmask × analyze_state :=
     match t, max_lams with
     | tLetIn na val body, _ =>
       let state := analyze state val in
@@ -419,17 +410,35 @@ Section AnalyzeTop.
     | tLambda na body, S max_lams =>
       let (mask, state) := analyze_top_level (new_var state) max_lams body in
       (* Add to mask indicating whether this arg is unused *)
-      (hd true state.1 :: mask, remove_var state)
+      (hd false state.1 :: mask, remove_var state)
     | t, _ => ([], analyze state t)
+    end.
+
+  Fixpoint analyze_case_branches
+           (ind : nat)
+           (c : nat)
+           (brs : list (nat × term))
+           (state : analyze_state)
+           (ctor_masks : list ((nat × nat) × bitmask)) :=
+    match brs with
+    | [] => (state, ctor_masks)
+    | (ar, br) :: brs =>
+      let (state, ctor_masks) := analyze_case_branches ind (S c) brs state ctor_masks in
+      let (mask, state) := analyze_top_level state ar br in
+      (* If mask is too short it means the branch is not an iterated lambda.
+           In this case we cannot know if the remaining args are dead, so pad
+           with 0's *)
+      let mask := mask ++ List.repeat false (ar - #|mask|) in
+      (state, update_ind_ctor_mask ind c ctor_masks (bitmask_and mask))
     end.
 End AnalyzeTop.
 
-Fixpoint analyze (state : analyze_state) (t : term) {struct t} : analyze_state :=
+Fixpoint analyze (state : analyze_state) (t : term) : analyze_state :=
   match t with
   | tBox => state
   | tRel i => set_used state i
   | tVar n => state
-  | tEvar _ ts => fold_left analyze ts state
+  | tEvar _ ts => fold_right (fun t state => analyze state t) state ts
   | tLambda _ cod => remove_var (analyze (new_var state) cod)
   | tLetIn _ val body => remove_var (analyze (new_var (analyze state val)) body)
   | tApp hd arg => analyze (analyze state hd) arg
@@ -439,16 +448,10 @@ Fixpoint analyze (state : analyze_state) (t : term) {struct t} : analyze_state :
     let state := analyze state discr in
     match get_mib_masks state.2 (inductive_mind ind) with
     | Some mm =>
-      let analyze_case c '(state, ctor_masks) brs :=
-          let (mask, state) := analyze_top_level analyze state brs.1 brs.2 in
-          (* If mask is too short it means the branch is not an iterated lambda.
-           In this case we cannot know if the remaining args are dead, so pad
-           with 0's *)
-          let mask := mask ++ List.repeat false (brs.1 - #|mask|) in
-          (state, update_ind_ctor_mask (inductive_ind ind) c ctor_masks (bitmask_and mask)) in
-      let (state, ctor_masks) := fold_lefti analyze_case 0 brs (state, ctor_masks mm) in
+      let (state, ctor_masks) :=
+          analyze_case_branches analyze (inductive_ind ind) 0 brs state (ctor_masks mm) in
       let mm := {| param_mask := param_mask mm; ctor_masks := ctor_masks |} in
-      update_mib_masks state (inductive_mind ind) mm
+      map_snd (update_mib_masks (inductive_mind ind) mm) state
     | None => state
     end
   | tProj (ind, npars, arg) t =>
@@ -458,13 +461,13 @@ Fixpoint analyze (state : analyze_state) (t : term) {struct t} : analyze_state :
       let ctor_masks :=
           update_ind_ctor_mask (inductive_ind ind) 0 (ctor_masks mm) (clear_bit arg) in
       let mm := {| param_mask := param_mask mm; ctor_masks := ctor_masks |} in
-      update_mib_masks state (inductive_mind ind) mm
+      map_snd (update_mib_masks (inductive_mind ind) mm) state
     | None => state
     end
   | tFix defs _
   | tCoFix defs _ =>
     let state := new_vars state #|defs| in
-    let state := fold_left (fun state d => analyze state (dbody d)) defs state in
+    let state := fold_right (fun d state => analyze state (dbody d)) state defs in
     remove_vars state #|defs|
   end.
 
