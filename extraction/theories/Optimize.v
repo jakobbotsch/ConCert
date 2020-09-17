@@ -114,9 +114,9 @@ Fixpoint dearg_single (mask : bitmask) (t : term) (args : list term) : term :=
   end.
 
 (* Get the branch for a branch of an inductive, i.e. without including parameters of the inductive *)
-Definition get_branch_mask (mm : mib_masks) (ind : nat) (c : nat) : bitmask :=
+Definition get_branch_mask (masks : list (nat * nat * bitmask)) (ind : nat) (c : nat) : bitmask :=
   match find (fun '(ind', c', _) => (ind' =? ind) && (c' =? c))
-             (ctor_masks mm) with
+             masks with
   | Some (_, _, mask) => mask
   | None => []
   end.
@@ -124,7 +124,7 @@ Definition get_branch_mask (mm : mib_masks) (ind : nat) (c : nat) : bitmask :=
 (* Get mask for a constructor, i.e. combined parameter and branch mask *)
 Definition get_ctor_mask (ind : inductive) (c : nat) : bitmask :=
   match get_mib_masks (inductive_mind ind) with
-  | Some mm => param_mask mm ++ get_branch_mask mm (inductive_ind ind) c
+  | Some mm => param_mask mm ++ get_branch_mask (ctor_masks mm) (inductive_ind ind) c
   | None => []
   end.
 
@@ -156,7 +156,7 @@ Definition dearged_npars (mm : option mib_masks) (npars : nat) : nat :=
 Definition dearg_case_branch
            (mm : mib_masks) (ind : nat) (c : nat)
            (br : nat × term) : nat × term :=
-  let mask := get_branch_mask mm ind c in
+  let mask := get_branch_mask (ctor_masks mm) ind c in
   (br.1 - count_ones mask, dearg_lambdas mask br.2).
 
 Definition dearg_case_branches
@@ -170,7 +170,7 @@ Definition dearg_case_branches
 
 Definition dearged_proj_arg (mm : option mib_masks) (ind : nat) (arg : nat) : nat :=
   match mm with
-  | Some mm => let mask := get_branch_mask mm ind 0 in
+  | Some mm => let mask := get_branch_mask (ctor_masks mm) ind 0 in
                arg - count_ones (firstn arg mask)
   | None => arg
   end.
@@ -452,7 +452,7 @@ Fixpoint analyze (state : analyze_state) (t : term) : analyze_state :=
           analyze_case_branches analyze (inductive_ind ind) 0 brs state (ctor_masks mm) in
       let mm := {| param_mask := param_mask mm; ctor_masks := ctor_masks |} in
       map_snd (update_mib_masks (inductive_mind ind) mm) state
-    | None => state
+    | None => fold_right (fun br state => analyze state br.2) state brs
     end
   | tProj (ind, npars, arg) t =>
     let state := analyze state t in

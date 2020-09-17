@@ -6,6 +6,7 @@ From Coq Require Import Arith.
 From Coq Require Import Btauto.
 From Coq Require Import Bool.
 From Coq Require Import List.
+From Coq Require Import Psatz.
 From Equations Require Import Equations.
 From MetaCoq.Erasure Require Import EInduction.
 From MetaCoq.Template Require Import utils.
@@ -192,10 +193,21 @@ Proof.
     now noconf an.
 Qed.
 
+Lemma analyze_case_branches_analyze ind c brs state cm :
+  analyze_case_branches analyze ind c brs state cm =
+  (fold_right (fun br state => analyze state br.2) state brs,
+   (analyze_case_branches analyze ind c brs state cm).2).
+Proof.
+  induction brs in c, state, cm |- *; [easy|].
+  cbn in *.
+  destruct a.
+  now rewrite IHbrs, analyze_top_level_analyze.
+Qed.
+
 Definition consistent_mib_mask (mm : mib_masks) (mib : mutual_inductive_body) : Prop :=
   (#|param_mask mm| = ind_npars mib) /\
   ∥Alli (fun ind oib =>
-           Alli (fun c '(_, args) => #|get_branch_mask mm ind c| = #|args|)
+           Alli (fun c '(_, args) => #|get_branch_mask (ctor_masks mm) ind c| = #|args|)
                 0
                 (ind_ctors oib))
    0
@@ -258,6 +270,7 @@ Proof.
     now rewrite get_mib_masks_update_neq by easy.
 Qed.
 
+(*
 Lemma mib_masks_consistent_analyze Σ t state :
   wfe_term Σ t ->
   consistent_mib_masks Σ state.2 ->
@@ -304,25 +317,31 @@ Proof.
     easy.
     apply H in valid_im.
     easy.
+*)
 
-Lemma nth_analyze Σ t k state :
-  wfe_term Σ t ->
-  valid_ind_masks Σ state.2 ->
+Lemma nth_skipn {A} i n (l : list A) a :
+  nth i (skipn n l) a = nth (n + i) l a.
+Proof. now rewrite !nth_nth_error, nth_error_skipn. Qed.
+
+Lemma nth_app_left_eq {A} i n (l l' : list A) a :
+  i = #|l| ->
+  nth (i + n) (l ++ l') a = nth n l' a.
+Proof.
+  intros ->.
+  now rewrite app_nth2, minus_plus by lia.
+Qed.
+
+Lemma nth_analyze k state t :
   nth k (analyze state t).1 false = nth k state.1 false && is_dead k t.
 Proof.
-  intros wf_t valid_im.
-  induction t in k, state, wf_t, valid_im |- * using term_forall_list_ind; cbn in *; propify.
+  induction t in k, state |- * using term_forall_list_ind; cbn in *; propify.
   - now btauto.
   - destruct (Nat.eqb_spec n k) as [<-|];
       [rewrite nth_clear_bit_eq|rewrite nth_clear_bit_neq by easy];
       btauto.
   - now btauto.
   - induction H; cbn in *; [now btauto|].
-    propify.
     rewrite H, IHForall.
-    btauto.
-    easy.
-    easy.
     now btauto.
   - rewrite nth_tl, IHt by easy.
     cbn.
@@ -336,327 +355,385 @@ Proof.
   - now btauto.
   - now btauto.
   - destruct p as (ind & npars).
-*)
-
-(*
-Lemma nth_analyze' t :
-  (forall k state n,
-      nth k (analyze_top_level analyze state n t).2.1 false = nth k state.1 false && is_dead k t) /\
-  (forall k state,
-      nth k (analyze state t).1 false = nth k state.1 false && is_dead k t).
-Proof.
-  induction t using term_forall_list_ind; cbn in *.
-  - now split; intros; btauto.
-  - split; intros.
-    + destruct (Nat.eqb_spec n k) as [<-|].
-      * rewrite nth_clear_bit_eq.
-        now btauto.
-      * rewrite nth_clear_bit_neq by easy.
-        now btauto.
-    + destruct (Nat.eqb_spec n k) as [<-|].
-      * rewrite nth_clear_bit_eq.
-        now btauto.
-      * rewrite nth_clear_bit_neq by easy.
-        now btauto.
-  - now split; intros; btauto.
-  - induction H; cbn in *; [now split; intros; btauto|].
-    destruct H.
-    destruct IHForall.
-    split; intros.
-    + rewrite H1, H2; [now btauto|exact 0].
-    + rewrite H1, H2; [now btauto|exact 0].
-  - destruct IHt.
-    split; intros.
-    + destruct n0; cbn.
-      * now rewrite nth_tl, H0.
-      * destruct analyze_top_level eqn:an.
-        unfold remove_var.
-        cbn.
-        rewrite nth_tl.
-        specialize (H (S k) (new_var state) n0).
-        rewrite an in H.
-        cbn in *.
-        now rewrite H.
-    + now rewrite nth_tl, H0.
-  - destruct IHt1, IHt2.
-    split; intros.
-    + destruct analyze_top_level eqn:an.
-      unfold remove_var.
+    destruct get_mib_masks.
+    + rewrite analyze_case_branches_analyze.
       cbn.
-      rewrite nth_tl.
-      specialize (H1 (S k) (new_var (analyze state t1)) n0).
-      rewrite an in H1.
-      cbn in *.
-      rewrite H1, H0.
+      induction X; cbn in *; [now rewrite IHt; btauto|].
+      rewrite p, IHX.
       now btauto.
-    + rewrite nth_tl, H2.
-      cbn.
-      rewrite H0.
+    + induction X; cbn in *; [now rewrite IHt; btauto|].
+      rewrite p, IHX.
       now btauto.
-  - destruct IHt1, IHt2.
-    split; intros.
-    + rewrite H2, H0.
-      now btauto.
-    + rewrite H2, H0.
-      now btauto.
-  - now split; intros; btauto.
-  - now split; intros; btauto.
-  - destruct p, IHt.
-    split; intros.
-    + destruct get_mib_masks; cycle 1.
-      * rewrite H0.
-  - now split; intros; btauto.
-  - now split; intros; btauto.
-  - now split; intros; btauto.
-  - now split; intros; btauto.
-  -
-    + destruct analyze_top_level eqn:an.
-      unfold remove_var.
-      cbn.
-      rewrite nth_tl.
-      specialize (H1 (S k) (new_var (analyze state t1)) n0).
-      rewrite an in H1.
-      cbn in *.
-      rewrite H1, H0.
-      now btauto.
-    + rewrite nth_tl, H2.
-      cbn.
-      rewrite H0.
-      now btauto.
-      unfold new_var.
-      cbn.
-      easy.
-      now btauto
-        destruct k.
-        -- cbn.
-        rewrite hd_nth.
-  - now split; intros; btauto.
-  - now split; intros; btauto.
-  - now split; intros; btauto.
-  - now split; intros; btauto.
-  - now split; intros; btauto.
-  - now split; intros; btauto.
-  - now split; intros; btauto.
-  - now split; intros; btauto.
-    + destruct k.
-      cbn.
-*)
-
-(*
-Lemma analyze_correct' Σ t :
-  wfe_term Σ t ->
-  (forall Γ im n mask Γ' im',
-      analyze_top_level analyze (Γ, im) n t = (mask, (Γ', im')) ->
-      (Γ', im') = analyze (Γ, im) t /\ valid_dearg_mask mask t /\ valid_cases im' t) /\
-  (forall Γ im Γ' im',
-      analyze (Γ, im) t = (Γ', im') ->
-      (forall k, nth k Γ' false = nth k Γ false && is_dead k t) /\
-      (forall t', valid_cases im t' -> valid_cases im' t') /\ valid_cases im' t).
-Proof.
-  induction t using term_forall_list_ind; cbn in *.
-  - split; intros; noconf H; [easy|].
-    split; [|easy].
-    now intros; btauto.
-  - split; intros; noconf H; [easy|].
-    split; [|easy].
-    intros.
-    cbn.
-    destruct (Nat.eqb_spec n k) as [<-|].
-    + rewrite nth_clear_bit_eq.
-      now btauto.
-    + rewrite nth_clear_bit_neq by easy.
-      now btauto.
-  - split; intros; noconf H; [easy|].
-    split; [|easy].
-    intros; btauto.
-  - split; intros.
-    + noconf H0.
-      cbn.
-      split; [easy|].
-      split; [easy|].
-      induction H in Γ, im, Γ', im', H0 |- *; [easy|].
-      destruct H.
-      cbn in *.
-      destruct fold_right eqn:fr.
-      cbn in *; propify; split.
-      * now apply H2 in H0.
-      * apply IHForall in fr.
-        apply H2 in H0 as (_ & ? & _).
-        clear -H0 fr.
-        induction l; [easy|].
-        cbn in *; propify.
-        now rewrite H0, IHl by easy.
-    + induction H in Γ, im, Γ', im', H0 |- *; cbn in *;
-        [noconf H0; split; intros; auto; btauto|].
-      destruct H.
-      destruct fold_right eqn:fr.
-      apply IHForall in fr as (? & ?).
-      apply H2 in H0 as (? & ?).
-      split.
-      * intros.
-        rewrite H0, H3.
-        now btauto.
-      * propify.
-        intuition auto.
-        clear -H4 H7.
-        induction l; [easy|].
-        cbn in *; propify.
-        now rewrite H4, IHl.
-  - destruct IHt.
-    split; intros; cbn in *.
-    + destruct n0; cbn in *.
-      * noconf H1.
-        unfold new_var, remove_var; cbn in *.
-        split; [easy|].
-        split; [easy|].
-        destruct analyze eqn:an.
-        apply H0 in an.
-        easy.
-      * destruct analyze_top_level eqn:an.
-        noconf H1.
-        unfold new_var, remove_var in *; cbn in *.
-        destruct a; cbn in *.
-        apply H in an as (? & ?).
-        propify.
-        pattern (analyze (true :: Γ, im) t). (* wtf? *)
-        rewrite <- H1.
-        split; [easy|].
-        intuition auto.
-        destruct analyze eqn:an.
-        apply H0 in an.
-        intuition auto.
-        noconf H1.
-        specialize (H2 0).
-        cbn in *.
-        rewrite hd_nth.
-        rewrite H2.
-        now destruct ?.
-    + destruct analyze eqn:an.
-      apply H0 in an.
-      unfold remove_var in *.
-      cbn in *.
-      noconf H1.
-      intuition auto.
-      rewrite nth_tl.
-      rewrite H1.
-      now btauto.
-  - destruct IHt1, IHt2.
-    split; intros.
-    + unfold new_var, remove_var in *.
-
-      destruct analyze eqn:an.
-      apply H0 in an as (? & ?).
-
-      destruct analyze_top_level eqn:an.
-      cbn in *.
-      noconf H3.
-      destruct a.
-      apply H1 in an as (-> & ? & ?).
-      split; [easy|].
-      split; [easy|].
-
-      destruct analyze eqn:an.
-      apply H2 in an as (? & ?).
-      propify; intuition auto.
-    + unfold new_var, remove_var in *.
-      noconf H3; cbn in *.
-
-      destruct (analyze (Γ, im) t1) eqn:an.
-      cbn in *.
-      apply H0 in an as (? & ?).
-      destruct analyze eqn:an.
-      apply H2 in an as (? & ?).
-      cbn in *.
-      split.
-      * intros.
-        rewrite nth_tl, H5, H3.
-        now btauto.
-      * propify.
-        intuition auto.
-  - destruct IHt1, IHt2.
-    split; intros.
-    + noconf H3; cbn in *.
-      destruct (analyze (Γ, im) t1) eqn:an.
-      propify.
-      split; [easy|].
-      split; [easy|].
-      apply H0 in an as (? & ?).
-      apply H2 in H3 as (? & ?).
-      easy.
-    + destruct (analyze (Γ, im) t1) eqn:an.
-      propify.
-      apply H0 in an as (? & ?).
-      apply H2 in H3 as (? & ?).
-      intuition auto.
-      rewrite H3, H4.
-      now btauto.
-  - split; intros; noconf H; [easy|].
-    split; [|easy].
-    now intros; btauto.
-  - split; intros; noconf H; [easy|].
-    split; [|easy].
-    now intros; btauto.
-  - destruct IHt.
-    split; intros.
-    + destruct p.
-      destruct get_mib_masks; cycle 1.
-      { destruct analyze eqn:an.
-        noconf H1.
-        split; [easy|].
-        split; [easy|].
-        propify.
-        apply H0 in an as (? & ? & ?).
-        intuition auto.
-        admit.
-        admit. }
-      admit.
-    + admit.
   - destruct s as ((ind & npars) & arg).
-    destruct IHt.
-    admit.
-  - split; intros.
-    + unfold new_vars, remove_vars in *; cbn in *.
-      noconf H0.
-      split; [easy|].
-      split; [easy|].
-      induction H in Γ, im |- *; [easy|].
-      cbn in *.
+    destruct get_mib_masks.
+    + cbn.
+      now rewrite IHt.
+    + now rewrite IHt.
+  - rewrite nth_skipn.
+    generalize #|m|.
+    induction H in k, m, H |- *; intros; cbn in *.
+    + rewrite nth_app_left_eq by now rewrite repeat_length.
+      now btauto.
+    + rewrite H, IHForall.
+      now btauto.
+  - rewrite nth_skipn.
+    generalize #|m|.
+    induction H in k, m, H |- *; intros; cbn in *.
+    + rewrite nth_app_left_eq by now rewrite repeat_length.
+      now btauto.
+    + rewrite H, IHForall.
+      now btauto.
+Qed.
 
-Lemma analyze_top_level_correct Γ im n t mask Γ' im' :
-  analyze_top_level analyze (Γ, im) n t = (mask, (Γ', im')) ->
-  (Γ', im') = analyze (Γ, im) t /\ valid_dearg_mask mask t /\ valid_cases im' t.
+Lemma valid_dearg_mask_analyze_top_level state n t :
+  valid_dearg_mask (analyze_top_level analyze state n t).1 t.
 Proof.
-  intros an.
-  induction t in Γ, im, mask, Γ', im', an |- * using term_forall_list_ind;
-    cbn in *; try solve [now noconf an].
-  - noconf an.
-    rewrite H0.
-    split; [easy|].
-    split; [easy|].
-    induction H in Γ, im, H0 |- *; [easy|].
+  induction t in state, n |- * using term_forall_list_ind; cbn in *; auto.
+  - destruct n; [easy|].
+    destruct analyze_top_level eqn:an.
+    rewrite analyze_top_level_analyze in an.
     cbn in *.
-    propify; split.
-    +
-    induction l using List.rev_ind; [easy|].
-    rewrite fold_left_app in *.
-    cbn in *.
-    apply Forall_snoc in H as (? & ?).
-    rewrite forallb_app.
-    cbn; propify.
-    intuition auto.
-    +
-    apply and_assoc.
-    split; [|easy].
-    induction H; [easy|].
-    cbn in *.
-    propify; split; [|easy].
-  - noconf an.
+    noconf an.
+    rewrite hd_nth, nth_analyze.
     cbn.
-    easy.
-  - noconf an.
-    easy.
-  -
+    propify; split; [|now apply IHt].
+    now btauto.
+  - destruct analyze_top_level eqn:an.
+    rewrite analyze_top_level_analyze in an.
+    cbn in *.
+    noconf an.
+    apply IHt2.
+Qed.
+
+(*
+Lemma valid_cases_update_mib_masks_branches im t kn ind c mm mm' i :
+  valid_cases im t ->
+  get_mib_masks im kn = Some mm ->
+  ctor_masks mm' = analyze_case_branches analyze ind c brs  update_ind_ctor_mask ind c (ctor_masks mm) (clear_bit i) ->
+  valid_cases (update_mib_masks kn mm' im) t.
+Proof.
+  Admitted.
 *)
+
+(*
+Lemma valid_case_masks_update_mib_masks_one_additive im ind npars brs kn mm mm' ind' c i :
+  valid_case_masks im ind npars brs ->
+  get_mib_masks im kn = Some mm ->
+  ctor_masks mm' = update_ind_ctor_mask ind' c (ctor_masks mm) (clear_bit i) ->
+  valid_case_masks (update_mib_masks kn mm' im) ind npars brs.
+Proof.
+  Admitted.
+*)
+
+Definition additive_ctor_masks (mm_old mm_new : mib_masks) : Prop :=
+  param_mask mm_new = param_mask mm_old /\
+  forall ind c,
+    Forall2 implb
+            (get_branch_mask (ctor_masks mm_new) ind c)
+            (get_branch_mask (ctor_masks mm_old) ind c).
+
+Instance Reflexive_additive_ctor_masks : RelationClasses.Reflexive additive_ctor_masks.
+Proof.
+  intros x.
+  split; [easy|].
+  intros.
+  apply Forall2_same.
+  now intros [].
+Qed.
+
+Instance Transitive_additive_ctor_masks : RelationClasses.Transitive additive_ctor_masks.
+Proof.
+  intros x y z [] [].
+  split; [congruence|].
+  intros.
+  specialize (H0 ind c).
+  specialize (H2 ind c).
+  enough (RelationClasses.Transitive (Forall2 implb)).
+  { now specialize (H3 _ _ _ H2 H0). }
+  apply Forall2_trans.
+  clear.
+  now intros [] [] [] ? ?.
+Qed.
+
+Lemma valid_dearg_mask_additive new old t :
+  Forall2 implb new old ->
+  valid_dearg_mask old t ->
+  valid_dearg_mask new t.
+Proof.
+  intros all valid_old.
+  induction t in new, old, all, valid_old |- *; cbn in *; auto; try solve [now destruct all].
+  destruct all; [easy|].
+  propify.
+  now destruct x, y.
+Qed.
+
+Lemma valid_case_masks_update_mib_masks_additive im ind npars brs kn mm mm' :
+  valid_case_masks im ind npars brs ->
+  get_mib_masks im kn = Some mm ->
+  additive_ctor_masks mm mm' ->
+  valid_case_masks (update_mib_masks kn mm' im) ind npars brs.
+Proof.
+  intros valid mmeq add.
+  unfold valid_case_masks in *.
+  destruct (eq_dec kn (inductive_mind ind)) as [->|].
+  - erewrite get_mib_masks_update_eq by easy.
+    rewrite mmeq in *.
+    unfold additive_ctor_masks in *.
+    propify.
+    split; [intuition auto; congruence|].
+    destruct valid as (_ & valid).
+    destruct add as (_ & add).
+    revert valid.
+    generalize 0 as c.
+    induction brs as [|(ar & br) brs IH]; [easy|].
+    intros c valid.
+    cbn in *.
+    propify.
+    split; [|easy].
+    clear IH.
+    specialize (add (inductive_ind ind) c).
+    split; [now apply Forall2_length in add as ->|].
+    destruct valid as ((_ & valid) & _).
+    now eapply valid_dearg_mask_additive.
+  - now rewrite get_mib_masks_update_neq by easy.
+Qed.
+
+Lemma valid_cases_update_mib_masks_additive im t kn mm mm' :
+  valid_cases im t ->
+  get_mib_masks im kn = Some mm ->
+  additive_ctor_masks mm mm' ->
+  valid_cases (update_mib_masks kn mm' im) t.
+Proof.
+  intros valid_t mmeq add.
+  induction t using term_forall_list_ind; cbn in *; auto.
+  - induction H; [easy|].
+    cbn in *.
+    now propify.
+  - propify.
+    now rewrite IHt1, IHt2.
+  - propify.
+    now rewrite IHt1, IHt2.
+  - destruct p.
+    propify.
+    rewrite IHt by easy.
+    split.
+    + split; [easy|].
+      destruct valid_t as ((_ & valid_brs) & _).
+      induction X; cbn in *; [easy|].
+      now propify.
+    + now eapply valid_case_masks_update_mib_masks_additive.
+  - destruct s as ((ind' & npars) & arg).
+    propify.
+    split; [easy|].
+    unfold valid_proj.
+    destruct (eq_dec kn (inductive_mind ind')) as [->|].
+    + erewrite get_mib_masks_update_eq by eassumption.
+      unfold valid_proj in valid_t.
+      rewrite mmeq in *.
+      propify.
+      destruct add as (param_masks & branch_masks).
+      split; [intuition auto; congruence|].
+      specialize (branch_masks (inductive_ind ind') 0).
+      rewrite !nth_nth_error in *.
+      destruct nth_error eqn:nth in |- *; [|easy].
+      eapply Forall2_nth_error_Some in branch_masks as (? & eq & ?); [|eassumption].
+      rewrite eq in *.
+      now destruct b, x.
+    + now erewrite get_mib_masks_update_neq by easy.
+  - induction H; [easy|].
+    cbn in *.
+    now propify.
+  - induction H; [easy|].
+    cbn in *.
+    now propify.
+Qed.
+
+Lemma analyze_top_level_same_max_lams s1 s2 max_lams t :
+  (analyze_top_level analyze s1 max_lams t).1 =
+  (analyze_top_level analyze s2 max_lams t).1.
+Proof.
+  induction t in s1, s2, max_lams |- * using term_forall_list_ind; cbn in *; auto.
+  - destruct max_lams; [easy|].
+    destruct analyze_top_level eqn:an.
+    destruct analyze_top_level eqn:an' in |- *.
+    cbn.
+    rewrite analyze_top_level_analyze in an, an'.
+    noconf an.
+    noconf an'.
+    f_equal; [|now apply IHt].
+    now rewrite !hd_nth, !nth_analyze.
+  - destruct analyze_top_level eqn:an.
+    destruct analyze_top_level eqn:an' in |- *.
+    cbn.
+    rewrite analyze_top_level_analyze in an, an'.
+    noconf an.
+    noconf an'.
+    apply IHt2.
+Qed.
+
+Lemma analyze_ind_masks_eq state1 state2 t :
+  state1.2 = state2.2 ->
+  (analyze state1 t).2 = (analyze state2 t).2.
+Proof.
+  intros eq.
+  induction t in state1, state2, eq |- * using term_forall_list_ind; cbn in *; auto.
+  - induction H; [easy|].
+    now apply H, IHForall.
+  - now apply IHt2, IHt1.
+  - destruct p.
+    erewrite IHt by eassumption.
+    destruct get_mib_masks.
+    + enough (
+          forall state1 state2 ind n masks,
+            state1.2 = state2.2 ->
+            (analyze_case_branches analyze ind n l state1 masks).2 =
+            (analyze_case_branches analyze ind n l state2 masks).2).
+      { rewrite analyze_case_branches_analyze.
+        symmetry.
+        rewrite analyze_case_branches_analyze.
+        cbn.
+        f_equal; cycle 1.
+        { clear -X eq IHt.
+          induction X in |- *; [easy|].
+          apply p, IHX. }
+        f_equal.
+        now apply H, IHt. }
+
+      clear -X.
+      intros state1 state2 ind n masks eq.
+      induction X in state1, state2, n, eq |- ; [easy|].
+      cbn in *.
+      destruct x.
+      rewrite analyze_case_branches_analyze.
+      symmetry; rewrite analyze_case_branches_analyze.
+      rewrite analyze_top_level_analyze.
+      symmetry; rewrite analyze_top_level_analyze.
+      cbn.
+      rewrite (IHX state1 state2) by easy.
+      now erewrite analyze_top_level_same_max_lams.
+    + induction X; [easy|].
+      now apply p, IHX.
+  - destruct s as ((ind & npars) & arg).
+    erewrite IHt by eassumption.
+    destruct get_mib_masks; [|now apply IHt].
+    cbn.
+    f_equal.
+    now apply IHt.
+  - generalize #|m|.
+    induction H; [easy|].
+    intros.
+    cbn in *.
+    apply H, IHForall.
+  - generalize #|m|.
+    induction H; [easy|].
+    intros.
+    cbn in *.
+    apply H, IHForall.
+Qed.
+
+Lemma analyze_additive_ctor_masks state kn mm_old t :
+  get_mib_masks state.2 kn = Some mm_old ->
+  exists mm_new,
+    get_mib_masks (analyze state t).2 kn = Some mm_new /\
+    additive_ctor_masks mm_old mm_new.
+Proof.
+  intros get_old.
+  induction t in state, mm_old, get_old |- * using term_forall_list_ind; cbn in *;
+    try solve [now exists mm_old].
+  - induction H; cbn in *.
+    + now exists mm_old.
+    + destruct IHForall as (? & ? & ?).
+      apply H in H1 as (? & ? & ?).
+      exists x1.
+      split; [easy|].
+      now transitivity x0.
+  - now apply IHt.
+  - apply IHt2 in get_old as (? & ? & ?).
+    apply IHt1 in H as (? & ? & ?).
+    exists x0.
+    unfold new_var.
+    eexists; split; [eauto|].
+
+      apply
+      * easy.
+      * eapply
+      eapply IHForall in get_old; [|eassumption].
+
+Lemma valid_cases_analyze_additive state t t' :
+  valid_cases state.2 t ->
+  valid_cases (analyze state t').2 t.
+Proof.
+  intros valid_t.
+  induction t' in state, t, valid_t |- * using term_forall_list_ind; cbn in *; auto.
+  - now induction H.
+  - now apply IHt'2, IHt'1.
+  - destruct p.
+    destruct get_mib_masks eqn:mm.
+    + rewrite analyze_case_branches_analyze.
+      cbn in *.
+      assert (exists m',
+                 fold_right (fun br state => analyze state br.2) (analyze state t') brs
+
+      destruct analyze_case_branches eqn:an.
+      cbn.
+      eapply valid_cases_update_mib_masks_additive.
+      rewrite analyze_case_branches_analyze.
+      cbn in *.
+      eapply valid_cases_update_mib_masks_additive.
+      * now induction X.
+      *
+      generalize l at 1.
+      induction X; intros; cbn in *.
+      * eapply valid_cases_update_mib_masks_additive; eauto.
+        split; [easy|].
+        cbn.
+        admit.
+      * eapply valid_cases_update_mib_masks_additive; eauto.
+        unfold get_branch_mask.
+        cbn.
+        -- now apply IHt'.
+        -- eassumption.
+        now apply IHt'.
+      * eapply valid_cases_update_mib_masks_branches_additive.
+      *
+      admit.
+    + now induction X.*)
+    admit.
+  - destruct s as ((ind & npars) & arg).
+    destruct get_mib_masks eqn:mm; [|now apply IHt'].
+    cbn.
+    eapply valid_cases_update_mib_masks_one; [easy|eassumption|].
+    cbn.
+    reflexivity.
+  -
+
+Lemma valid_cases_analyze state t :
+  valid_cases (analyze state t).2 t.
+Proof.
+  induction t in state |- * using term_forall_list_ind; cbn in *; auto.
+  - induction H; intros; cbn in *; [easy|].
+    propify; split; [now apply H|].
+    eapply forallb_impl; [|eassumption].
+    intros.
+    now apply valid_cases_analyze_additive.
+    induction l; [easy|].
+    cbn.
+    rewrite valid_cases_analyze_additive.
+    cbn.
+    apply IHl.
+    pose proof valid_cases_analyze_additive; unfold is_true in *.
+    pattern(fold_right (fun (t : term) (state0 : analyze_state) => analyze state0 t) state l).
+    rewrite H1.
+pattern (valid_cases
+       (analyze
+          (fold_right (fun (t : term) (state0 : analyze_state) => analyze state0 t) state l) x).2).
+rewrite H1.
+    pattern valid_cases.
+    rewrite H1.
+    rewrite valid_cases_analyze_additive.
+    cbn in *.
+    rewrite H.
+    rewrite IHForall.
 
 Lemma analyze_env_correct Σ :
   wfe_env Σ ->
@@ -680,6 +757,16 @@ Proof.
       rewrite get_const_mask_eq.
       propify.
       cbn in *.
+      destruct analyze_top_level eqn:an'.
+      destruct a.
+      noconf an.
+      rewrite analyze_top_level_analyze in an'.
+      noconf an'.
+      split; [now apply valid_dearg_mask_analyze_top_level|].
+      destruct analyze_top_level eqn:an.
+      destruct a.
+      cbn in *.
+      noconf an'.
 Lemma analyze_correct :
     + apply valid_masks_decl_add_const; [easy|easy|].
       admit.
