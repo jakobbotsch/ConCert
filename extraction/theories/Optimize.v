@@ -385,7 +385,7 @@ Fixpoint update_ind_ctor_mask
          (ctor_masks : list (nat * nat * bitmask))
          (f : bitmask -> bitmask) : list (nat * nat * bitmask) :=
   match ctor_masks with
-  | [] => []
+  | [] => [(ind, c, f [])] (* for easier statements in proofs *)
   | (ind', c', mask') :: ctor_masks =>
     if (ind' =? ind) && (c' =? c) then
       (ind', c', f mask') :: ctor_masks
