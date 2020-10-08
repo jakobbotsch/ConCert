@@ -121,6 +121,7 @@ extraction/theories/CertifyingEta.v
 
 -Q extraction/examples ConCert.Extraction.Examples
 extraction/examples/Ack.v
+extraction/examples/Color.v
 extraction/examples/Counter.v
 extraction/examples/CounterCertifiedExtraction.v
 extraction/examples/CounterDepCertifiedExtraction.v

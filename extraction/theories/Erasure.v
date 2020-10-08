@@ -871,9 +871,9 @@ Equations? (noeqns) erase_constant_decl
 erase_constant_decl cst wt with flag_of_type [] (P.cst_type cst) _ := {
   | {| is_arity := left isar; is_sort := left issort |} with inspect (P.cst_body cst) := {
     | exist (Some body) body_eq => Ok (inr (erase_type body _));
-    | exist None _ => Err (TypeAliasWithoutBody)
+    | exist None _ => Ok (inr ([], TBox))
     };
-  | {| is_arity := left isar; is_sort := right notsort |} => Err CannotHandleTypeScheme;
+  | {| is_arity := left isar; is_sort := right notsort |} => Ok (inr ([], TBox));
   | {| is_arity := right notar |} =>
     Ok (inl {| cst_type := erase_type (P.cst_type cst) _;
                cst_body := erased_body |})

@@ -389,7 +389,18 @@ Fixpoint print_term (Γ : list ident) (t : term) : PrettyPrinter unit :=
                 append (" " ++ name);;
                 print_branch n (name :: Γ) t
 
-              | _ => printer_fail "could not decompose branch"
+              | _ =>
+                names <- monad_fold_left (fun names _ => name <- fresh_ident nAnon Γ;;
+                                                         push_use name;;
+                                                         ret (name :: names))
+                                         (seq 0 (S n)) [];;
+                append (concat "" (map (fun id => " " ++ id) names));;
+                append " ->";;
+                append_nl_and_indent;;
+                print_parenthesized (parenthesize_app_head t) (print_term Γ t);;
+                append (concat "" (map (fun id => " " ++ id) names));;
+
+                monad_fold_left (fun _ _ => pop_use) (seq 0 (S n)) tt
               end
             end) arity Γ t;;
 

@@ -303,3 +303,27 @@ Module ex11.
 "  = Build_Monad (□ -> 𝕋 -> m) (□ -> □ -> m -> (𝕋 -> m) -> m)" $>.
   Proof. vm_compute. reflexivity. Qed.
 End ex11.
+
+Module ex12.
+  Definition code :=
+    Eval cbv in (@sumbool_rect (0 = 0) (0 = 0) (fun _ => nat)).
+  MetaCoq Quote Recursively Definition ex12 := code.
+  Example ex12_test :
+    extract ex12 = Ok <$
+"type Nat";
+"  = O";
+"  | S Nat";
+"";
+"type Sumbool";
+"  = Left □";
+"  | Right □";
+"";
+"code : (□ -> Nat) -> (□ -> Nat) -> Sumbool -> Nat";
+"code f f2 s =";
+"  case s of";
+"    Left x ->";
+"      f x";
+"    Right x ->";
+"      f2 x" $>.
+  Proof. vm_compute. reflexivity. Qed.
+End ex12.
