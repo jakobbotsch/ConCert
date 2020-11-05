@@ -13,6 +13,7 @@ From MetaCoq.Erasure Require Import ECSubst.
 From MetaCoq.Erasure Require Import EInduction.
 From MetaCoq.Erasure Require Import EInversion.
 From MetaCoq.Erasure Require Import ELiftSubst.
+From MetaCoq.Erasure Require Import ETyping.
 From MetaCoq.Erasure Require Import EWcbvEval.
 From MetaCoq.Template Require Import utils.
 
@@ -176,153 +177,139 @@ Proof.
   now rewrite body_eq in env_clos.
 Qed.
 
-Lemma closed_unfold_fix mfix idx narg fn :
-  closed (tFix mfix idx) ->
-  ETyping.unfold_fix mfix idx = Some (narg, fn) ->
-  closed fn.
+Lemma closedn_substl k s t :
+  Forall (closedn k) s ->
+  closedn (k + #|s|) t ->
+  closedn k (substl s t).
+Proof.
+  intros all clos.
+  unfold substl.
+  induction s in t, all, clos |- *; cbn in *.
+  - now rewrite Nat.add_0_r in clos.
+  - depelim all.
+    apply IHs; auto.
+    apply (closedn_csubst _ (k + #|s|) 0).
+    + eapply closed_upwards; eauto.
+      lia.
+    + cbn.
+      now rewrite <- Nat.add_succ_r.
+Qed.
+
+Lemma closedn_fix_subst k mfix :
+  forallb (test_def (closedn (#|mfix| + k))) mfix ->
+  Forall (closedn k) (fix_subst mfix).
+Proof.
+  intros all.
+  unfold fix_subst.
+  now induction #|mfix| as [|n IH] at 1.
+Qed.
+
+Lemma closedn_cunfold_fix k mfix idx narg fn :
+  closedn k (tFix mfix idx) ->
+  cunfold_fix mfix idx = Some (narg, fn) ->
+  closedn k fn.
 Proof.
   cbn.
-  intros clos_fix fix_eq.
-  rewrite Nat.add_0_r in *.
-  unfold ETyping.unfold_fix in *.
-  destruct (nth_error mfix idx) eqn:Heq; [|easy].
+  intros clos fix_eq.
+  unfold cunfold_fix in *.
+  destruct nth_error eqn:nth; [|discriminate].
   noconf fix_eq.
-  eapply closedn_subst0.
-  - clear Heq.
-    unfold ETyping.fix_subst.
-    generalize #|mfix|.
-    induction n as [|n IH]; [easy|].
-    constructor.
-    + cbn.
-      now rewrite Nat.add_0_r.
-    + easy.
-  - apply nth_error_In in Heq.
-    apply forallb_Forall in clos_fix.
-    rewrite Forall_forall in clos_fix.
-    now rewrite ETyping.fix_subst_length.
+  apply closedn_substl.
+  - apply closedn_fix_subst; auto.
+  - eapply nth_error_forallb in clos.
+    rewrite nth in clos.
+    now rewrite Nat.add_comm, fix_subst_length.
 Qed.
 
-Lemma closed_unfold_cofix mfix idx narg fn :
-  closed (tFix mfix idx) ->
-  ETyping.unfold_cofix mfix idx = Some (narg, fn) ->
-  closed fn.
+Lemma closedn_cofix_subst k mfix :
+  forallb (test_def (closedn (#|mfix| + k))) mfix ->
+  Forall (closedn k) (cofix_subst mfix).
+Proof.
+  intros all.
+  unfold cofix_subst.
+  now induction #|mfix| as [|n IH] at 1.
+Qed.
+
+Lemma closedn_cunfold_cofix k mfix idx narg fn :
+  closedn k (tCoFix mfix idx) ->
+  cunfold_cofix mfix idx = Some (narg, fn) ->
+  closedn k fn.
 Proof.
   cbn.
-  intros clos_fix fix_eq.
-  rewrite Nat.add_0_r in *.
-  unfold ETyping.unfold_cofix in *.
-  destruct (nth_error mfix idx) eqn:Heq; [|easy].
+  intros clos fix_eq.
+  unfold cunfold_cofix in *.
+  destruct nth_error eqn:nth; [|discriminate].
   noconf fix_eq.
-  eapply closedn_subst0.
-  - clear Heq.
-    unfold ETyping.cofix_subst.
-    generalize #|mfix|.
-    induction n as [|n IH]; [easy|].
-    constructor.
-    + cbn.
-      now rewrite Nat.add_0_r.
-    + easy.
-  - apply nth_error_In in Heq.
-    apply forallb_Forall in clos_fix.
-    rewrite Forall_forall in clos_fix.
-    now rewrite ETyping.cofix_subst_length.
+  apply closedn_substl.
+  - apply closedn_cofix_subst; auto.
+  - eapply nth_error_forallb in clos.
+    rewrite nth in clos.
+    now rewrite Nat.add_comm, cofix_subst_length.
 Qed.
 
-Lemma all_closed Σ args args' :
-  Forall (closedn 0) args ->
-  All2 (eval Σ) args args' ->
-  Forall2 (fun t v => closed t -> closed v) args args' ->
-  Forall (closedn 0) args'.
-Proof.
-  intros args_clos args_eval impl_clos.
-  induction args_eval; [easy|].
-  depelim args_clos.
-  depelim impl_clos.
-  easy.
-Qed.
-
-Lemma closed_iota_red pars c args brs :
-  Forall (fun a => closed a) args ->
-  Forall (fun t => closed t.2) brs ->
-  closed (ETyping.iota_red pars c args brs).
+Lemma closedn_iota_red k pars c args brs :
+  Forall (closedn k) args ->
+  Forall (fun t => closedn k t.2) brs ->
+  closedn k (ETyping.iota_red pars c args brs).
 Proof.
   intros clos_args clos_brs.
   unfold ETyping.iota_red.
-  apply closed_mkApps.
+  apply closedn_mkApps.
   - rewrite nth_nth_error.
     destruct (nth_error _ _) eqn:nth; [|easy].
     now eapply nth_error_forall in nth; [|eassumption].
   - now apply Forall_skipn.
 Qed.
 
-Lemma closed_cunfold_fix defs n narg f :
-  cunfold_fix defs n = Some (narg, f) ->
-  closed (tFix defs n) ->
-  closed f.
-Proof.
-  intros eq clos.
-  rewrite <- closed_unfold_fix_cunfold_eq in eq by easy.
-  now eapply closed_unfold_fix.
-Qed.
-
-Lemma closed_cunfold_cofix defs n narg f :
-  cunfold_cofix defs n = Some (narg, f) ->
-  closed (tCoFix defs n) ->
-  closed f.
-Proof.
-  intros eq clos.
-  rewrite <- closed_unfold_cofix_cunfold_eq in eq by easy.
-  now eapply closed_unfold_cofix.
-Qed.
-
-Lemma eval_closed Σ t v :
+Lemma eval_closedn Σ t v k :
   Σ e⊢ t ▷ v ->
   env_closed Σ ->
-  closed t ->
-  closed v.
+  closedn k t ->
+  closedn k v.
 Proof.
   intros ev env_clos clos.
   induction ev; cbn in *; propify.
   - easy.
   - apply IHev3.
-    now apply closed_csubst.
+    now apply closedn_csubst with (k' := 0).
   - apply IHev2.
-    now apply closed_csubst.
+    now apply closedn_csubst with (k' := 0).
   - apply IHev2.
-    apply closed_iota_red.
-    + now eapply closed_mkApps_args.
+    apply closedn_iota_red.
+    + eapply proj2.
+      now eapply closedn_mkApps_inv.
     + now apply forallb_Forall.
   - subst brs.
     cbn in *.
     propify.
     apply IHev2.
-    apply closed_mkApps; [easy|].
-    clear.
-    induction n; [constructor|].
-    constructor; easy.
+    apply closedn_mkApps; [easy|].
+    now apply Forall_repeat.
   - apply IHev3.
     split; [|easy].
     destruct clos as (clos & _).
     specialize (IHev1 clos).
-    apply closed_mkApps_inv in IHev1 as (? & ?).
-    apply closed_mkApps; [|easy].
-    now eapply closed_cunfold_fix.
+    apply closedn_mkApps_inv in IHev1 as (? & ?).
+    apply closedn_mkApps; [|easy].
+    eapply closedn_cunfold_fix; eauto.
   - easy.
   - apply IHev.
     split; [|easy].
     destruct clos as (clos & _).
-    apply closed_mkApps_inv in clos.
+    apply closedn_mkApps_inv in clos.
     cbn in *.
-    apply closed_mkApps; [|easy].
-    now eapply closed_cunfold_cofix.
+    apply closedn_mkApps; [|easy].
+    now eapply closedn_cunfold_cofix.
   - apply IHev.
-    apply closed_mkApps_inv in clos.
-    apply closed_mkApps; [|easy].
-    now eapply closed_cunfold_cofix.
+    apply closedn_mkApps_inv in clos.
+    apply closedn_mkApps; [|easy].
+    now eapply closedn_cunfold_cofix.
   - apply IHev.
-    now eapply closed_constant.
+    eapply closed_upwards.
+    + eapply closed_constant; eauto.
+    + lia.
   - apply IHev2.
-    apply closed_mkApps_args in IHev1; [|easy].
+    apply closedn_mkApps_inv in IHev1 as (_ & IHev1); [|easy].
     rewrite nth_nth_error in *.
     destruct (nth_error _ _) eqn:nth_eq.
     + apply nth_error_In in nth_eq.

@@ -34,10 +34,9 @@ Lemma closed_mkApps hd args :
   closed (mkApps hd args).
 Proof. now intros; apply closedn_mkApps. Qed.
 
-Lemma closed_mkApps_inv hd args :
-  closed (mkApps hd args) ->
-  closed hd /\
-  Forall (closedn 0) args.
+Lemma closedn_mkApps_inv k hd args :
+  closedn k (mkApps hd args) ->
+  closedn k hd /\ Forall (closedn k) args.
 Proof.
   revert hd.
   induction args using List.rev_ind; [easy|]; intros hd clos.
@@ -48,22 +47,6 @@ Proof.
   split; [easy|].
   apply app_Forall; [easy|].
   constructor; easy.
-Qed.
-
-Lemma closed_mkApps_head hd args :
-  closed (mkApps hd args) ->
-  closed hd.
-Proof.
-  intros clos.
-  now pose proof (closed_mkApps_inv _ _ clos).
-Qed.
-
-Lemma closed_mkApps_args hd args :
-  closed (mkApps hd args) ->
-  Forall (closedn 0) args.
-Proof.
-  intros clos.
-  now pose proof (closed_mkApps_inv _ _ clos).
 Qed.
 
 Definition decl_closed (decl : EAst.global_decl) : bool :=
@@ -191,13 +174,64 @@ Proof.
   now rewrite Nat.add_0_r.
 Qed.
 
+Lemma closedn_csubst s k k' t :
+  closedn k s ->
+  closedn (S (k' + k)) t ->
+  closedn (k' + k) (csubst s k' t).
+Proof.
+  revert k k'.
+  induction t using term_forall_list_ind; intros k k' all clos;
+    cbn in *; auto; propify.
+  - destruct (Nat.compare_spec k' n); cbn in *.
+    + subst.
+      eapply closed_upwards; eauto.
+      lia.
+    + propify.
+      lia.
+    + propify.
+      lia.
+  - induction X; cbn in *; propify; easy.
+  - erewrite <- (IHt _ (S k')); [|easy|rewrite <- clos; f_equal; lia].
+    f_equal; lia.
+  - split; [easy|].
+    erewrite <- (IHt2 _ (S k')); [|easy|].
+    + f_equal; lia.
+    + rewrite <- (proj2 clos); f_equal; lia.
+  - easy.
+  - split; [easy|].
+    induction X; cbn in *; propify; easy.
+  - rewrite map_length.
+    revert k k' all clos.
+    induction X; intros k k' all all'; cbn in *; propify; [easy|].
+    destruct x; cbn in *.
+    split.
+    + erewrite <- (p _ (S (#|l| + k'))); [|easy|].
+      * f_equal; lia.
+      * rewrite <- (proj1 all').
+        f_equal; lia.
+    + erewrite <- (IHX _ (S k')); [|easy|].
+      * repeat (f_equal; try lia).
+      * rewrite <- (proj2 all').
+        repeat (f_equal; try lia).
+  - rewrite map_length.
+    revert k k' all clos.
+    induction X; intros k k' all all'; cbn in *; propify; [easy|].
+    destruct x; cbn in *.
+    split.
+    + erewrite <- (p _ (S (#|l| + k'))); [|easy|].
+      * f_equal; lia.
+      * rewrite <- (proj1 all').
+        f_equal; lia.
+    + erewrite <- (IHX _ (S k')); [|easy|].
+      * repeat (f_equal; try lia).
+      * rewrite <- (proj2 all').
+        repeat (f_equal; try lia).
+Qed.
+
 Lemma closed_csubst t k u : closed t -> closedn (S k) u -> closedn k (csubst t 0 u).
 Proof.
   intros clost closu.
-  rewrite closed_subst by easy.
-  apply closedn_subst0.
-  - constructor; [|easy].
-    now eapply closed_upwards.
-  - cbn.
-    now rewrite Nat.add_1_r.
+  apply (closedn_csubst _ _ 0); auto.
+  eapply closed_upwards; eauto.
+  lia.
 Qed.
