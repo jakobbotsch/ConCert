@@ -474,8 +474,8 @@ Proof.
   destruct Γ as [|[na [body|]] Γ];
     cbn in *; refold.
   - easy.
-  - apply eval_mkApps_head in ev as ev_let.
-    destruct ev_let as (letv & ev_let).
+  - apply eval_mkApps_inv in ev as ev_let.
+    destruct ev_let as (letv&?&ev_let&?).
     apply eval_tLetIn_inv in ev_let as ev_subst.
     destruct ev_subst as (bodyv & ev_body & ev_subst).
     propify.
@@ -492,13 +492,14 @@ Proof.
       now apply valid_dearg_mask_csubst.
     + easy.
     + rewrite <- subst_it_mkLambda_or_LetIn.
-      eapply (eval_mkApps_heads _ _ _ letv); [easy|easy|].
-      now eapply eval_mkApps_heads; [exact ev_let| |]; easy.
+      eapply eval_mkApps_congr.
+      3: exact ev_let.
+      all: eauto.
     + now rewrite vasses_subst_context.
     + now rewrite length_subst_context.
     + rewrite <- subst_it_mkLambda_or_LetIn in IH.
-      apply eval_mkApps_head in IH as ev_top.
-      destruct ev_top as (topv & ev_top).
+      apply eval_mkApps_inv in IH as ev_top.
+      destruct ev_top as (topv&?&ev_top&?).
       rewrite subst_it_mkLambda_or_LetIn in ev_top.
       apply eval_dearg_lambdas_inv in ev_top as ev_sub_top; cycle 1.
       * easy.
@@ -507,15 +508,17 @@ Proof.
       * now rewrite vasses_subst_context.
       * destruct ev_sub_top as (sub_top & ev_sub_top).
         rewrite <- subst_it_mkLambda_or_LetIn in ev_top.
-        eapply eval_mkApps_heads; [| |now eauto]; [now eauto|].
+        eapply eval_mkApps_congr.
+        5: eauto.
+        all: eauto.
         econstructor; [easy|].
         rewrite !closed_subst in * by easy.
         now rewrite <- dearg_lambdas_subst.
   - destruct mask as [|b mask]; [easy|];
       cbn in *; refold.
     destruct args as [|a args]; cbn in *; [easy|].
-    apply eval_mkApps_head in ev as ev_app.
-    destruct ev_app as (appv & ev_app).
+    apply eval_mkApps_inv in ev as ev_app.
+    destruct ev_app as (appv&?&ev_app&?).
     apply eval_tApp_tLambda_inv in ev_app as ev_subst.
     destruct ev_subst as (av & ev_a & ev_subst).
     assert (closed av).
@@ -534,11 +537,13 @@ Proof.
       now apply valid_dearg_mask_csubst.
     + easy.
     + rewrite <- subst_it_mkLambda_or_LetIn.
-      now eapply eval_mkApps_heads; [exact ev_app| |]; easy.
+      eapply eval_mkApps_congr.
+      3: exact ev_app.
+      all: eauto.
     + now rewrite vasses_subst_context.
     + now rewrite length_subst_context.
-    + apply eval_mkApps_head in IH as ev_top.
-      destruct ev_top as (topv & ev_top).
+    + apply eval_mkApps_inv in IH as ev_top.
+      destruct ev_top as (topv&?&ev_top&?).
       apply eval_dearg_lambdas_inv in ev_top as ev_sub_top; cycle 1.
       * easy.
       * rewrite <- subst_it_mkLambda_or_LetIn.
@@ -548,12 +553,16 @@ Proof.
         destruct ev_sub_top as (sub_top & ev_sub_top).
         rewrite !closed_subst in * by easy.
         destruct b; cbn in *.
-        -- eapply eval_mkApps_heads; [| |now eauto]; [now eauto|].
+        -- eapply eval_mkApps_congr.
+           5: eauto.
+           all: eauto.
            unfold subst1.
            rewrite <- dearg_lambdas_subst by easy.
            propify.
            now erewrite no_use_subst.
-        -- eapply eval_mkApps_heads; [| |now eauto]; [now eauto|].
+        -- eapply eval_mkApps_congr.
+           5: eauto.
+           all: eauto.
            rewrite dearg_lambdas_subst in ev_top by easy.
            rewrite <- closed_subst in ev_top by easy.
            eapply eval_beta; [|easy|easy].
@@ -1901,7 +1910,7 @@ Proof.
 Qed.
 
 Hint Resolve
-     closedn_subst0 closed_mkApps closedn_dearg_aux closed_iota_red
+     closedn_subst0 closed_mkApps closedn_dearg_aux closedn_iota_red
      is_expanded_aux_subst is_expanded_aux_mkApps
      valid_cases_subst : dearg.
 Hint Constructors Forall : dearg.
@@ -2112,9 +2121,9 @@ Proof with auto with dearg.
     apply IHev2; [apply closedn_subst0|apply valid_cases_subst]...
   - intuition auto.
     eapply eval_closed in ev1 as ?...
-    apply closed_mkApps_inv in H1 as (? & ?).
+    apply closedn_mkApps_inv in H1 as (? & ?).
     assert (closed (iota_red pars c args brs)).
-    { apply closed_iota_red; auto.
+    { apply closedn_iota_red; auto.
       now apply forallb_Forall. }
     eapply eval_closed in ev2 as ?...
     eapply valid_cases_mkApps_inv in H5 as (? & ?).
@@ -2133,11 +2142,11 @@ Proof with auto with dearg.
   - intuition auto.
     eapply eval_closed in ev1 as ?...
     eapply eval_closed in ev2 as ?...
-    apply closed_mkApps_inv in H6 as (? & ?).
+    apply closedn_mkApps_inv in H6 as (? & ?).
     apply valid_cases_mkApps_inv in H5 as (? & ?).
     apply H4...
     + apply closed_mkApps...
-      now eapply closed_cunfold_fix.
+      now eapply closedn_cunfold_fix.
     + split; [|easy].
       apply valid_cases_mkApps...
       eapply valid_cases_cunfold_fix; [eassumption| |]...
@@ -2145,9 +2154,9 @@ Proof with auto with dearg.
   - destruct ip.
     propify.
     intuition auto.
-    apply closed_mkApps_inv in H as (? & ?).
+    apply closedn_mkApps_inv in H as (? & ?).
     apply valid_cases_mkApps_inv in H3 as (? & ?).
-    assert (closed fn) by (now eapply closed_cunfold_cofix).
+    assert (closed fn) by (now eapply closedn_cunfold_cofix).
     assert (closed (mkApps fn args)) by (now apply closed_mkApps).
     eapply eval_closed in ev as ?...
     + apply H1...
@@ -2156,11 +2165,11 @@ Proof with auto with dearg.
       now eapply valid_cases_cunfold_cofix.
     + now cbn; propify.
   - destruct p as ((ind & npars) & arg).
-    apply closed_mkApps_inv in clos_t as (? & ?).
+    apply closedn_mkApps_inv in clos_t as (? & ?).
     propify.
     destruct valid_t as (valid_t & valid_proj).
     apply valid_cases_mkApps_inv in valid_t as (? & ?).
-    assert (closed fn) by (now eapply closed_cunfold_cofix).
+    assert (closed fn) by (now eapply closedn_cunfold_cofix).
     apply IHev.
     + now apply closed_mkApps.
     + split; [|easy].
@@ -2171,7 +2180,7 @@ Proof with auto with dearg.
     + now eapply valid_cases_constant.
   - intuition auto.
     eapply eval_closed in ev1 as ?...
-    eapply closed_mkApps_inv in H1 as (? & ?).
+    eapply closedn_mkApps_inv in H1 as (? & ?).
     eapply valid_cases_mkApps_inv in H2 as (? & ?).
     rewrite (nth_nth_error (pars + arg) args tDummy) in *.
     destruct (nth_error _ _) eqn:nth; [|now apply IHev2].
@@ -2389,31 +2398,6 @@ Proof.
     now rewrite nth in valid_fix.
 Qed.
 
-Lemma isBox_mkApps hd args :
-  isBox (mkApps hd args) = isBox hd && (#|args| =? 0).
-Proof.
-  destruct args using List.rev_ind.
-  - cbn.
-    now rewrite Bool.andb_true_r.
-  - rewrite mkApps_app, app_length.
-    cbn.
-    rewrite Nat.add_comm.
-    cbn.
-    now rewrite Bool.andb_false_r.
-Qed.
-
-Lemma isLambda_mkApps hd args :
-  isLambda (mkApps hd args) = isLambda hd && (#|args| =? 0).
-Proof.
-  destruct args using List.rev_ind.
-  - cbn.
-    now rewrite Bool.andb_true_r.
-  - rewrite mkApps_app, app_length.
-    cbn.
-    symmetry; propify.
-    right; easy.
-Qed.
-
 Lemma eval_mkApps_tConstruct {wfl:WcbvFlags} Σ ind c args argsv
       (a : All2 (eval Σ) args argsv) :
   Σ e⊢ mkApps (tConstruct ind c) args ▷ mkApps (tConstruct ind c) argsv.
@@ -2526,15 +2510,15 @@ Section dearg.
         rewrite dearg_mkApps in ev.
         apply ev.
       + now unshelve eapply (IH _ _ _ _ _ ev2).
-      + apply closed_mkApps_inv in H0 as (? & ?).
+      + apply closedn_mkApps_inv in H0 as (? & ?).
         apply valid_cases_mkApps_inv in H2 as (? & ?).
         apply is_expanded_aux_mkApps_inv in H4 as (? & ?).
         rewrite map_length.
         now apply dearg_cunfold_fix.
-      + apply closed_mkApps_inv in H0 as (? & ?).
+      + apply closedn_mkApps_inv in H0 as (? & ?).
         apply valid_cases_mkApps_inv in H2 as (? & ?).
         apply is_expanded_aux_mkApps_inv in H4 as (? & ?).
-        apply closed_cunfold_fix in e as ?; auto.
+        eapply closedn_cunfold_fix in e as ?; eauto.
         apply valid_cases_cunfold_fix in e as ?; auto.
         apply forallb_Forall in H4.
         apply is_expanded_cunfold_fix in e as ?; auto.
@@ -2557,7 +2541,7 @@ Section dearg.
         rewrite dearg_mkApps in ev.
         apply ev.
       + now unshelve eapply (IH _ _ _ _ _ ev2).
-      + apply closed_mkApps_inv in H0 as (? & ?).
+      + apply closedn_mkApps_inv in H0 as (? & ?).
         apply valid_cases_mkApps_inv in H2 as (? & ?).
         apply is_expanded_aux_mkApps_inv in H4 as (? & ?).
         now apply dearg_cunfold_fix.
@@ -2646,35 +2630,34 @@ Section dearg.
     cbn.
     intros.
     pose proof (eval_tApp_deriv ev) as (? & ? & ? & ? & ?).
-    eapply eval_tApp_heads.
-    2: { unshelve eapply eval_mkApps_dearg.
-         2: eassumption.
-         all: auto.
-         - now apply Forall_snoc in clos_args.
-         - now apply Forall_snoc in valid_args.
-         - now apply Forall_snoc in exp_args.
-         - lia. }
-    1: { unshelve eapply IH.
-         2: eassumption.
-         - apply Forall_snoc in clos_args.
-           now apply closed_mkApps.
-         - apply Forall_snoc in valid_args.
-           now apply valid_cases_mkApps.
-         - apply is_expanded_aux_mkApps; [now eapply is_expanded_aux_upwards|].
-           now apply Forall_snoc in exp_args.
-         - lia. }
-      unshelve eapply eval_tApp_dearg.
+    apply Forall_snoc in clos_args as (?&?).
+    apply Forall_snoc in valid_args as (?&?).
+    apply Forall_snoc in exp_args as (?&?).
+
+    eapply eval_tApp_congr.
+    + unshelve eapply eval_mkApps_dearg.
+      2: eassumption.
       all: auto.
-    - apply Forall_snoc in clos_args.
+      lia.
+    + unshelve eapply IH.
+      2: eassumption.
+      all: auto.
+      lia.
+    + unshelve eapply IH.
+      2: eassumption.
+      * now apply closed_mkApps.
+      * now apply valid_cases_mkApps.
+      * now apply is_expanded_aux_mkApps; [now eapply is_expanded_aux_upwards|].
+      * lia.
+    + unshelve eapply IH.
+      2: eassumption.
+      all: auto.
+      lia.
+    + unshelve eapply eval_tApp_dearg.
+      all: auto.
       now apply closed_mkApps.
-    - apply Forall_snoc in valid_args.
       now apply valid_cases_mkApps.
-    - apply Forall_snoc in exp_args.
-      apply is_expanded_aux_mkApps; [|easy].
-      now eapply is_expanded_aux_upwards.
-    - now apply Forall_snoc in clos_args.
-    - now apply Forall_snoc in valid_args.
-    - now apply Forall_snoc in exp_args.
+      now apply is_expanded_aux_mkApps; [now eapply is_expanded_aux_upwards|].
   Qed.
 End dearg.
 
@@ -2835,12 +2818,11 @@ Proof.
     enough (trans_env (dearg_env Σ)
             e⊢ mkApps (dearg (dearg_lambdas (get_const_mask kn) body))
                       (masked (get_const_mask kn) (map dearg args)) ▷ dearg v) as ev'.
-    { eapply eval_mkApps_head in ev' as ev_hd.
-      destruct ev_hd as (hdv & ev_hd).
-      eapply eval_mkApps_heads.
-      3: eassumption.
-      1: eassumption.
-      econstructor; eassumption. }
+    { eapply eval_mkApps_inv in ev' as ev_hd.
+      destruct ev_hd as (hdv&?&ev_hd&?).
+      eapply eval_mkApps_congr.
+      econstructor; eauto.
+      all: eauto. }
 
     rewrite dearg_dearg_lambdas by
         eauto using valid_dearg_mask_constant, valid_cases_constant.
@@ -2856,7 +2838,7 @@ Proof.
     + apply closedn_dearg_aux; [|easy].
       now eapply closed_constant.
     + apply Forall_map.
-      apply closed_mkApps_inv in clos_t as (? & clos_args).
+      apply closedn_mkApps_inv in clos_t as (? & clos_args).
       eapply Forall_impl; [exact clos_args|].
       intros.
       now apply closedn_dearg_aux.
@@ -2869,7 +2851,7 @@ Proof.
       * now eapply closed_constant.
       * now eapply valid_cases_constant.
       * now eapply is_expanded_constant.
-      * now apply closed_mkApps_inv in clos_t.
+      * now apply closedn_mkApps_inv in clos_t.
       * now apply valid_cases_mkApps_inv in valid_t.
       * lia.
 
@@ -2887,7 +2869,7 @@ Proof.
     { assert (all_smaller: sum_deriv_lengths ev_args <= n).
       { pose proof (deriv_length_min ev_constr).
         lia. }
-      apply closed_mkApps_inv in clos_t as (_ & clos_apps).
+      apply closedn_mkApps_inv in clos_t as (_ & clos_apps).
       apply valid_cases_mkApps_inv in valid_t as (_ & valid_apps).
       clear -clos_apps valid_apps exp_args IH ev_args all_smaller.
       induction ev_args; cbn in *.
@@ -2905,7 +2887,7 @@ Proof.
 
     now apply eval_mkApps_tConstruct, All2_masked.
   - facts.
-    apply closed_mkApps_inv in clos_t as (clos_t & clos_args).
+    apply closedn_mkApps_inv in clos_t as (clos_t & clos_args).
     apply valid_cases_mkApps_inv in valid_t as (valid_t & valid_args).
     apply is_expanded_aux_mkApps_inv in exp_t as (exp_hd & exp_args).
     unshelve eapply eval_mkApps_dearg_reduce.
@@ -2923,7 +2905,7 @@ Proof.
       clear IHev1 IHev2.
       facts.
       clear clos_args valid_args exp_args.
-      apply closed_mkApps_inv in H2 as (clos_hd & clos_args).
+      apply closedn_mkApps_inv in H2 as (clos_hd & clos_args).
       apply valid_cases_mkApps_inv in H3 as (valid_hd & valid_args).
       apply is_expanded_aux_mkApps_inv in H4 as (exp_hd & exp_args).
       cbn in *; propify.
@@ -2963,8 +2945,8 @@ Proof.
         intros.
         destruct (nth_error _ _) eqn:nth; cycle 1.
         { cbn in *.
-          eapply eval_mkApps_head in ev2 as ev'.
-          destruct ev' as (? & ev_contra).
+          eapply eval_mkApps_inv in ev2 as ev'.
+          destruct ev' as (?&?&ev_contra&?).
           now depelim ev_contra. }
         cbn in *.
         replace
@@ -3088,14 +3070,14 @@ Proof.
 
     + (* Unfold cofix *)
       clear clos_args valid_args exp_args.
-      apply closed_mkApps_inv in clos_discr as (clos_hd & clos_args).
+      apply closedn_mkApps_inv in clos_discr as (clos_hd & clos_args).
       apply valid_cases_mkApps_inv in valid_discr as (valid_hd & valid_args).
       apply is_expanded_aux_mkApps_inv in exp_discr as (exp_hd & exp_args).
       cbn in *; propify.
       rewrite dearg_mkApps.
       cbn.
       apply (red_cofix_case _ _ _ _ _ narg (dearg fn)); [now eapply dearg_cunfold_cofix|].
-      assert (closed fn) by now eapply closed_cunfold_cofix.
+      assert (closed fn) by now eapply closedn_cunfold_cofix.
       assert (valid_cases fn) by now eapply valid_cases_cunfold_cofix.
       assert (is_expanded fn).
       { eapply is_expanded_cunfold_cofix; [eassumption|].
@@ -3111,7 +3093,7 @@ Proof.
     + congruence.
 
   - facts.
-    apply closed_mkApps_inv in clos_t as (clos_hd & clos_args).
+    apply closedn_mkApps_inv in clos_t as (clos_hd & clos_args).
     apply valid_cases_mkApps_inv in valid_t as (valid_hd & valid_args).
     apply is_expanded_aux_mkApps_inv in exp_t as (exp_hd & exp_args).
     cbn in * |-.
@@ -3125,7 +3107,7 @@ Proof.
     + (* Cofix projection *)
       propify.
       destruct valid_hd as (valid_hd & valid_proj).
-      apply closed_mkApps_inv in clos_hd as (clos_hd & clos_args).
+      apply closedn_mkApps_inv in clos_hd as (clos_hd & clos_args).
       apply valid_cases_mkApps_inv in valid_hd as (valid_hd & valid_args).
       apply is_expanded_aux_mkApps_inv in exp_hd as (exp_hd & exp_args).
       cbn in *; propify.
@@ -3133,7 +3115,7 @@ Proof.
       unfold dearg_proj.
       cbn.
       apply (red_cofix_proj _ _ _ _ _ narg (dearg fn)); [now eapply dearg_cunfold_cofix|].
-      assert (closed fn) by now eapply closed_cunfold_cofix.
+      assert (closed fn) by now eapply closedn_cunfold_cofix.
       assert (valid_cases fn) by now eapply valid_cases_cunfold_cofix.
       assert (is_expanded fn).
       { eapply is_expanded_cunfold_cofix; [eassumption|].
@@ -3153,7 +3135,7 @@ Proof.
       propify.
       destruct valid_hd as (valid_hd & valid_p).
       facts.
-      apply closed_mkApps_inv in H2 as (clos_constr & clos_args).
+      apply closedn_mkApps_inv in H2 as (clos_constr & clos_args).
       apply valid_cases_mkApps_inv in H3 as (valid_constr & valid_args).
       apply is_expanded_aux_mkApps_inv in H4 as (exp_constr & exp_args).
       cbn in *; propify.
@@ -3215,7 +3197,7 @@ Proof.
     + congruence.
 
   - facts.
-    apply closed_mkApps_inv in clos_t as (clos_t & clos_args).
+    apply closedn_mkApps_inv in clos_t as (clos_t & clos_args).
     apply valid_cases_mkApps_inv in valid_t as (valid_t & valid_args).
     apply is_expanded_aux_mkApps_inv in exp_t as (exp_t & exp_args).
     unshelve eapply eval_mkApps_dearg_reduce.

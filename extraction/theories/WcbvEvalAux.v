@@ -26,70 +26,101 @@ Global Arguments eval_unique_sig {_ _ _ _ _}.
 Global Arguments eval_deterministic {_ _ _ _ _}.
 Global Arguments eval_unique {_ _ _ _}.
 
+Lemma isBox_mkApps hd args :
+  isBox (mkApps hd args) = isBox hd && (#|args| =? 0).
+Proof.
+  destruct args using List.rev_ind.
+  - cbn.
+    now rewrite Bool.andb_true_r.
+  - rewrite mkApps_app, app_length.
+    cbn.
+    rewrite Nat.add_comm.
+    cbn.
+    now rewrite Bool.andb_false_r.
+Qed.
+
+Lemma isLambda_mkApps hd args :
+  isLambda (mkApps hd args) = isLambda hd && (#|args| =? 0).
+Proof.
+  destruct args using List.rev_ind.
+  - cbn.
+    now rewrite Bool.andb_true_r.
+  - rewrite mkApps_app, app_length.
+    cbn.
+    symmetry; propify.
+    right; easy.
+Qed.
+
 Section fix_flags.
 Context {wfl : WcbvFlags}.
 
-Lemma eval_tApp_head Σ hd arg v :
+Lemma eval_tApp_inv Σ hd arg v :
   Σ e⊢ tApp hd arg ▷ v ->
-  ∑ hdv, Σ e⊢ hd ▷ hdv.
+  ∑ hdv argv,
+    Σ e⊢ hd ▷ hdv ×
+    Σ e⊢ arg ▷ argv.
 Proof.
   intros ev.
-  now depelim ev.
+  depelim ev; try solve [eexists _, _; split; eauto].
+  depelim i.
 Qed.
 
-Lemma eval_tApp_arg Σ hd arg v :
-  Σ e⊢ tApp hd arg ▷ v ->
-  ∑ argv, Σ e⊢ arg ▷ argv.
-Proof.
-  intros ev.
-  now depelim ev.
-Qed.
-
-Lemma eval_mkApps_head Σ hd args v :
+Lemma eval_mkApps_inv Σ hd args v :
   Σ e⊢ mkApps hd args ▷ v ->
-  ∑ hdv, Σ e⊢ hd ▷ hdv.
+  ∑ hdv argsv,
+    Σ e⊢ hd ▷ hdv ×
+    All2 (eval Σ) args argsv.
 Proof.
   revert hd v.
-  induction args; intros hd v ev; [easy|].
-  cbn in *.
-  specialize (IHargs _ _ ev) as (? & ?).
-  now apply eval_tApp_head in e.
+  induction args; intros hd v ev.
+  - exists v, []; split; eauto.
+  - cbn in *.
+    apply IHargs in ev as (?&?&?&?).
+    apply eval_tApp_inv in e as (?&?&?&?).
+    eexists _, (_ :: _).
+    split; eauto.
 Qed.
 
-Lemma eval_mkApps_args Σ hd args v :
-  Σ e⊢ mkApps hd args ▷ v ->
-  ∑ argsv, All2 (eval Σ) args argsv.
-Proof.
-  revert hd v.
-  induction args; intros hd v ev; [easy|].
-  cbn in *.
-  apply eval_mkApps_head in ev as ev_hd.
-  destruct ev_hd as (hdv & ev_hd).
-  specialize (IHargs _ _ ev) as (argsv & all).
-  apply eval_tApp_arg in ev_hd as (argv & ev_arg).
-  exists (argv :: argsv).
-  now constructor.
-Qed.
-
-Lemma eval_tApp_heads Σ hd hd' hdv arg v :
+Lemma eval_tApp_congr Σ hd hdv arg argv hd' arg' v :
   Σ e⊢ hd ▷ hdv ->
+  Σ e⊢ arg ▷ argv ->
   Σ e⊢ hd' ▷ hdv ->
-  Σ e⊢ tApp hd arg ▷ v ->
-  Σ e⊢ tApp hd' arg ▷ v.
+  Σ e⊢ arg' ▷ argv ->
+  Σ e⊢ tApp hd' arg' ▷ v ->
+  Σ e⊢ tApp hd arg ▷ v.
 Proof.
-  intros ev_hd ev_hd' ev_app.
-  depind ev_app.
-  - rewrite (eval_deterministic ev_hd ev_app1) in *.
-    now eapply eval_box.
-  - rewrite (eval_deterministic ev_hd ev_app1) in *.
-    now eapply eval_beta.
-  - rewrite (eval_deterministic ev_hd ev_app1) in *.
-    now eapply eval_fix.
-  - rewrite (eval_deterministic ev_hd ev_app1) in *.
-    now eapply eval_fix_value.
-  - rewrite (eval_deterministic ev_hd ev_app1) in *.
-    now eapply eval_app_cong.
-  - easy.
+  intros ev_hd ev_arg ev_hd' ev_arg' ev_app'.
+  depind ev_app';
+    repeat
+      match goal with
+      | [H: Σ e⊢ ?t ▷ ?v1, H': Σ e⊢ ?t ▷ ?v2 |- _] =>
+        pose proof (eval_unique_sig H H') as eq; noconf eq
+      end; try solve [econstructor; eauto].
+  depelim i.
+Qed.
+
+Lemma eval_mkApps_congr Σ hd hdv args argsv hd' args' v :
+  Σ e⊢ hd ▷ hdv ->
+  All2 (eval Σ) args argsv ->
+  Σ e⊢ hd' ▷ hdv ->
+  All2 (eval Σ) args' argsv ->
+  Σ e⊢ mkApps hd' args' ▷ v ->
+  Σ e⊢ mkApps hd args ▷ v.
+Proof.
+  intros ev_hd ev_args ev_hd' ev_args' ev_apps.
+  induction ev_args in
+      hd, hdv, args, argsv, hd', args', v, ev_hd, ev_args, ev_hd', ev_args', ev_apps |- *;
+    cbn in *.
+  - depelim ev_args'.
+    cbn in *.
+    pose proof (eval_unique_sig ev_hd' ev_apps) as eq; noconf eq.
+    auto.
+  - depelim ev_args'.
+    cbn in *.
+    apply eval_mkApps_inv in ev_apps as H; destruct H as (?&_&?&_).
+    eapply IHev_args.
+    1: eapply eval_tApp_congr; eauto.
+    all: eauto.
 Qed.
 
 Derive Signature for eval.
@@ -125,28 +156,6 @@ Proof.
     solve_discr.
   - now apply eval_tLambda_inv in ev1 as ->.
   - easy.
-Qed.
-
-Lemma eval_mkApps_heads Σ hd hd' hdv args v :
-  Σ e⊢ hd ▷ hdv ->
-  Σ e⊢ hd' ▷ hdv ->
-  Σ e⊢ mkApps hd args ▷ v ->
-  Σ e⊢ mkApps hd' args ▷ v.
-Proof.
-  revert hd hd' hdv v.
-  induction args as [|a args]; intros hd hd' hdv v ev_hd ev_hd' ev.
-  - cbn in *.
-    now rewrite (eval_deterministic ev ev_hd) in *.
-  - cbn in *.
-    apply eval_mkApps_head in ev as ev_app_hd.
-    destruct ev_app_hd as (app_hdv & ev_app_hd).
-    eapply IHargs.
-    2: {
-      eapply eval_tApp_heads; [| |exact ev_app_hd].
-      all: easy.
-    }
-    + easy.
-    + easy.
 Qed.
 
 Lemma lookup_env_find Σ kn :
@@ -319,6 +328,15 @@ Proof.
   - easy.
   - easy.
   - easy.
+Qed.
+
+Lemma eval_closed Σ t v :
+  Σ e⊢ t ▷ v ->
+  env_closed Σ ->
+  closed t ->
+  closed v.
+Proof.
+  eapply eval_closedn.
 Qed.
 
 Fixpoint deriv_length {Σ t v} (ev : Σ e⊢ t ▷ v) : nat :=
@@ -496,8 +514,8 @@ Proof.
     exists ev_hd'; lia.
   - revert ev_apps; rewrite !mkApps_app; intros.
     cbn in *.
-    eapply eval_tApp_head in ev_apps as ev_apps'.
-    destruct ev_apps' as (? & ev_apps').
+    eapply eval_tApp_inv in ev_apps as ev_apps'.
+    destruct ev_apps' as (?&_&ev_apps'&_).
     specialize (IHargs _ _ _ _ ev_hd ev_hd' ev_apps') as (ev_apps'' & ?).
     pose proof (eval_tApp_heads_deriv ev_apps' ev_apps'' ev_apps) as (ev & ?).
     exists ev.
