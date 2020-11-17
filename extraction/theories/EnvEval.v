@@ -14,6 +14,8 @@ From MetaCoq.Erasure Require Import EWcbvEval.
 From MetaCoq.Template Require Import utils.
 From MetaCoq.PCUIC Require PCUICAstUtils.
 
+Set Default Goal Selector "!".
+
 Set Keyed Unification.
 
 Import ListNotations.
@@ -96,9 +98,11 @@ Section env_eval.
       nth_error σ i = Some v ->
       Σ ;;; σ e⊢ tRel i, [] ▷ v
   | env_eval_box a argsv av :
+      isApp a = false ->
       Σ ;;; σ e⊢ a, argsv ▷ vBox ->
       Σ ;;; σ e⊢ a, (argsv ++ [av]) ▷ vBox
   | env_eval_beta f argsv na b σ' av res :
+      isApp f = false ->
       Σ ;;; σ e⊢ f, argsv ▷ vLambda na b σ' ->
       Σ ;;; (av :: σ') e⊢ b, [] ▷ res ->
       Σ ;;; σ e⊢ f, (argsv ++ [av]) ▷ res
@@ -112,6 +116,7 @@ Section env_eval.
       Σ ;;; σ e⊢ (nth c brs (0, tDummy)).2, (skipn pars argsv) ▷ v ->
       Σ ;;; σ e⊢ tCase (ind, pars) discr brs, [] ▷ v
   | env_eval_fix f argsv mfix idx σ' fargsv a av def v :
+      isApp f = false ->
       Σ ;;; σ e⊢ f, argsv ▷ vFix mfix idx σ' fargsv ->
       Σ ;;; σ e⊢ a, [] ▷ av ->
       nth_error mfix idx = Some def ->
@@ -119,6 +124,7 @@ Section env_eval.
       Σ ;;; (fix_env mfix σ') e⊢ dbody def, (fargsv ++ [av]) ▷ v ->
       Σ ;;; σ e⊢ f, (argsv ++ [av]) ▷ v
   | env_eval_fix_value f argsv mfix idx σ' fargsv a av def :
+      isApp f = false ->
       Σ ;;; σ e⊢ f, argsv ▷ vFix mfix idx σ' fargsv ->
       Σ ;;; σ e⊢ a, [] ▷ av ->
       nth_error mfix idx = Some def ->
@@ -145,10 +151,12 @@ Section env_eval.
       nth_error argsv (pars + arg) = Some av ->
       Σ ;;; σ e⊢ tProj (ind, pars, arg) discr, [] ▷ av
   | env_eval_app_construct t argsv ind c cargsv a av :
+      isApp t = false ->
       Σ ;;; σ e⊢ t, argsv ▷ vConstruct ind c cargsv ->
       Σ ;;; σ e⊢ a, [] ▷ av ->
       Σ ;;; σ e⊢ t, (argsv ++ [av]) ▷ vConstruct ind c (cargsv ++ [av])
   | env_eval_app_cofix t argsv mfix idx σ' fargsv a av :
+      isApp t = false ->
       Σ ;;; σ e⊢ t, argsv ▷ vCoFix mfix idx σ' fargsv ->
       Σ ;;; σ e⊢ a, [] ▷ av ->
       Σ ;;; σ e⊢ t, (argsv ++ [av]) ▷ vCoFix mfix idx σ' (fargsv ++ [av])
@@ -164,115 +172,208 @@ Section env_eval.
       Σ ;;; σ e⊢ tCoFix mfix idx, [] ▷ vCoFix mfix idx σ []
   where "Σ ;;; σ 'e⊢' t , args ▷ v" := (env_eval Σ σ t args v) : type_scope.
 
+  (*
+  Definition ex1 : [];;; [] e⊢ mkApps tBox [tBox; tBox], [] ▷ vBox.
+  Proof.
+    eapply env_eval_app; [econstructor|].
+    eapply env_eval_box with (argsv := []).
+    eapply env_eval_app; [econstructor|].
+    eapply env_eval_box with (argsv := []).
+    eapply env_eval_box_atom.
+  Defined.
+
+  Definition ex2 : [];;; [] e⊢ mkApps tBox [tBox; tBox], [] ▷ vBox.
+  Proof.
+    eapply env_eval_app; [econstructor|].
+    eapply env_eval_app; [econstructor|].
+    eapply env_eval_box with (argsv := [_]).
+    eapply env_eval_box with (argsv := []).
+    eapply env_eval_box_atom.
+  Defined.
+
+  Lemma foo : ex1 <> ex2.
+  Proof.
+    discriminate.
+  Qed.
+*)
+
   Derive Signature for env_eval.
 
+  Inductive All2_dep {X Y} {T : X -> Y -> Type} (U : forall {x y}, T x y -> Type) :
+    forall {xs : list X} {ys : list Y}, All2 T xs ys -> Type :=
+  | All2_dep_nil : All2_dep (@U) All2_nil
+  | All2_dep_cons
+      {x y xs ys}
+      {t : T x y}
+      {a : All2 T xs ys}
+      (u : U t)
+      (ad : All2_dep (@U) a) : All2_dep (@U) (All2_cons t a).
+
+  Global Arguments All2_dep_nil {_ _ _ _}.
+  Global Arguments All2_dep_cons {_ _ _ _ _ _}.
+
+  Lemma All2_dep_nondep
+        {X Y}
+        {T : X -> Y -> Type}
+        {xs ys}
+        {a : All2 T xs ys}
+        {T' : X -> Y -> Type} :
+    All2_dep (fun x y uxy => T' x y) a ->
+    All2 T' xs ys.
+  Proof.
+    intros ad.
+    induction ad; auto.
+  Qed.
+
   Lemma env_eval_forall_list_rect :
-    forall (Σ : global_declarations) (P : list ee_val -> term -> list ee_val -> ee_val -> Type),
-      (forall (σ : list ee_val) (a : term) (av : ee_val) (t : term) (argsv : list ee_val) (v : ee_val),
-          Σ;;; σ e⊢ a, [] ▷ av ->
-                       P σ a [] av -> Σ;;; σ e⊢ t, av :: argsv ▷ v -> P σ t (av :: argsv) v -> P σ (tApp t a) argsv v) ->
-      (forall (σ : list ee_val) (i : nat) (v : ee_val), nth_error σ i = Some v -> P σ (tRel i) [] v) ->
-      (forall (σ : list ee_val) (a : term) (argsv : list ee_val) av,
-          Σ;;; σ e⊢ a, argsv ▷ vBox -> P σ a argsv vBox -> P σ a (argsv ++ [av]) vBox) ->
+      forall (Σ : global_declarations)
+        (P : forall (σ : list ee_val) (t : term) (l : list ee_val) (e : ee_val),
+             Σ;;; σ e⊢ t, l ▷ e -> Type),
+      (forall (σ : list ee_val) (a : term) (av : ee_val) (t : term) (argsv : list ee_val)
+         (v : ee_val) (e : Σ;;; σ e⊢ a, [] ▷ av),
+       P σ a [] av e ->
+       forall e0 : Σ;;; σ e⊢ t, av :: argsv ▷ v,
+       P σ t (av :: argsv) v e0 -> P σ (tApp t a) argsv v (env_eval_app Σ σ a av t argsv v e e0)) ->
+      (forall (σ : list ee_val) (i : nat) (v : ee_val) (e : nth_error σ i = Some v),
+       P σ (tRel i) [] v (env_eval_rel Σ σ i v e)) ->
+      (forall (σ : list ee_val) (a : term) (argsv : list ee_val) (av : ee_val)
+         (e : isApp a = false) (e0 : Σ;;; σ e⊢ a, argsv ▷ vBox),
+       P σ a argsv vBox e0 -> P σ a (argsv ++ [av]) vBox (env_eval_box Σ σ a argsv av e e0)) ->
       (forall (σ : list ee_val) (f2 : term) (argsv : list ee_val) (na : name)
-              (b : term) (σ' : list ee_val) (av res : ee_val),
-          Σ;;; σ e⊢ f2, argsv ▷ vLambda na b σ' ->
-          P σ f2 argsv (vLambda na b σ') ->
-          Σ;;; (av :: σ') e⊢ b, [] ▷ res -> P (av :: σ') b [] res -> P σ f2 (argsv ++ [av]) res) ->
-      (forall (σ : list ee_val) (na : name) (val : term) (valv : ee_val) (body : term) (v : ee_val),
-          Σ;;; σ e⊢ val, [] ▷ valv ->
-          P σ val [] valv ->
-          Σ;;; (valv :: σ) e⊢ body, [] ▷ v -> P (valv :: σ) body [] v -> P σ (tLetIn na val body) [] v) ->
+         (b : term) (σ' : list ee_val) (av res : ee_val) (e : isApp f2 = false)
+         (e0 : Σ;;; σ e⊢ f2, argsv ▷ vLambda na b σ'),
+       P σ f2 argsv (vLambda na b σ') e0 ->
+       forall e1 : Σ;;; (av :: σ') e⊢ b, [] ▷ res,
+       P (av :: σ') b [] res e1 ->
+       P σ f2 (argsv ++ [av]) res (env_eval_beta Σ σ f2 argsv na b σ' av res e e0 e1)) ->
+      (forall (σ : list ee_val) (na : name) (val : term) (valv : ee_val) (body : term)
+         (v : ee_val) (e : Σ;;; σ e⊢ val, [] ▷ valv),
+       P σ val [] valv e ->
+       forall e0 : Σ;;; (valv :: σ) e⊢ body, [] ▷ v,
+       P (valv :: σ) body [] v e0 ->
+       P σ (tLetIn na val body) [] v (env_eval_zeta Σ σ na val valv body v e e0)) ->
       (forall (σ : list ee_val) (discr : term) (ind : inductive) (pars c : nat)
-              (argsv : list ee_val) (brs : list (nat × term)) (v : ee_val),
-          Σ;;; σ e⊢ discr, [] ▷ vConstruct ind c argsv ->
-          P σ discr [] (vConstruct ind c argsv) ->
-          is_propositional Σ ind = Some false ->
-          Σ;;; σ e⊢ (nth c brs (0, tDummy)).2, skipn pars argsv ▷ v ->
-          P σ (nth c brs (0, tDummy)).2 (skipn pars argsv) v -> P σ (tCase (ind, pars) discr brs) [] v) ->
+         (argsv : list ee_val) (brs : list (nat × term)) (v : ee_val)
+         (e : Σ;;; σ e⊢ discr, [] ▷ vConstruct ind c argsv),
+       P σ discr [] (vConstruct ind c argsv) e ->
+       forall (e0 : is_propositional Σ ind = Some false)
+         (e1 : Σ;;; σ e⊢ (nth c brs (0, tDummy)).2, skipn pars argsv ▷ v),
+       P σ (nth c brs (0, tDummy)).2 (skipn pars argsv) v e1 ->
+       P σ (tCase (ind, pars) discr brs) [] v (env_eval_iota Σ σ discr ind pars c argsv brs v e e0 e1)) ->
       (forall (σ : list ee_val) (f5 : term) (argsv : list ee_val) (mfix : mfixpoint term)
-              (idx : nat) (σ' fargsv : list ee_val) (a : term) (av : ee_val) (def0 : def term)
-              (v : ee_val),
-          Σ;;; σ e⊢ f5, argsv ▷ vFix mfix idx σ' fargsv ->
-          P σ f5 argsv (vFix mfix idx σ' fargsv) ->
-          Σ;;; σ e⊢ a, [] ▷ av ->
-          P σ a [] av ->
-          nth_error mfix idx = Some def0 ->
-          #|fargsv| = rarg def0 ->
-          Σ;;; fix_env mfix σ' e⊢ dbody def0, fargsv ++ [av] ▷ v ->
-          P (fix_env mfix σ') (dbody def0) (fargsv ++ [av]) v -> P σ f5 (argsv ++ [av]) v) ->
+         (idx : nat) (σ' fargsv : list ee_val) (a : term) (av : ee_val) (def0 : def term)
+         (v : ee_val) (e : isApp f5 = false) (e0 : Σ;;; σ e⊢ f5, argsv ▷ vFix mfix idx σ' fargsv),
+       P σ f5 argsv (vFix mfix idx σ' fargsv) e0 ->
+       forall e1 : Σ;;; σ e⊢ a, [] ▷ av,
+       P σ a [] av e1 ->
+       forall (e2 : nth_error mfix idx = Some def0) (e3 : #|fargsv| = rarg def0)
+         (e4 : Σ;;; fix_env mfix σ' e⊢ dbody def0, fargsv ++ [av] ▷ v),
+       P (fix_env mfix σ') (dbody def0) (fargsv ++ [av]) v e4 ->
+       P σ f5 (argsv ++ [av]) v
+         (env_eval_fix Σ σ f5 argsv mfix idx σ' fargsv a av def0 v e e0 e1 e2 e3 e4)) ->
       (forall (σ : list ee_val) (f6 : term) (argsv : list ee_val) (mfix : mfixpoint term)
-              (idx : nat) (σ' fargsv : list ee_val) (a : term) (av : ee_val) (def0 : def term),
-          Σ;;; σ e⊢ f6, argsv ▷ vFix mfix idx σ' fargsv ->
-          P σ f6 argsv (vFix mfix idx σ' fargsv) ->
-          Σ;;; σ e⊢ a, [] ▷ av ->
-          P σ a [] av ->
-          nth_error mfix idx = Some def0 ->
-          #|fargsv| < rarg def0 -> P σ f6 (argsv ++ [av]) (vFix mfix idx σ' (fargsv ++ [av]))) ->
+         (idx : nat) (σ' fargsv : list ee_val) (a : term) (av : ee_val) (def0 : def term)
+         (e : isApp f6 = false) (e0 : Σ;;; σ e⊢ f6, argsv ▷ vFix mfix idx σ' fargsv),
+       P σ f6 argsv (vFix mfix idx σ' fargsv) e0 ->
+       forall e1 : Σ;;; σ e⊢ a, [] ▷ av,
+       P σ a [] av e1 ->
+       forall (e2 : nth_error mfix idx = Some def0) (l : #|fargsv| < rarg def0),
+       P σ f6 (argsv ++ [av]) (vFix mfix idx σ' (fargsv ++ [av]))
+         (env_eval_fix_value Σ σ f6 argsv mfix idx σ' fargsv a av def0 e e0 e1 e2 l)) ->
       (forall (σ : list ee_val) (mfix : list (def term)) (idx : nat) (def0 : def term)
-              (ind : inductive) (pars : nat) (args : list term) (argsv : list ee_val)
-              (c : nat) (cargsv : list ee_val) (brs : list (nat × term)) (v : ee_val),
-          nth_error mfix idx = Some def0 ->
-          All2 (fun (t : term) (v0 : ee_val) => Σ;;; σ e⊢ t, [] ▷ v0 × P σ t [] v0) args argsv ->
-          Σ;;; cofix_env mfix σ e⊢ dbody def0, argsv ▷ vConstruct ind c cargsv ->
-          P (cofix_env mfix σ) (dbody def0) argsv (vConstruct ind c cargsv) ->
-          is_propositional Σ ind = Some false ->
-          Σ;;; σ e⊢ (nth c brs (0, tDummy)).2, skipn pars cargsv ▷ v ->
-          P σ (nth c brs (0, tDummy)).2 (skipn pars cargsv) v ->
-          P σ (tCase (ind, pars) (mkApps (tCoFix mfix idx) args) brs) [] v) ->
-      (forall (σ : list ee_val) (c : kername) (decl : constant_body) (body : term),
-          declared_constant Σ c decl ->
-          forall v : ee_val,
-            cst_body decl = Some body ->
-            Σ;;; [] e⊢ body, [] ▷ v ->
-            P [] body [] v -> P σ (tConst c) [] v) ->
+         (ind : inductive) (pars : nat) (args : list term) (argsv : list ee_val)
+         (c : nat) (cargsv : list ee_val) (brs : list (nat × term)) (v : ee_val)
+         (e : nth_error mfix idx = Some def0)
+         (a : All2 (fun (t : term) (v0 : ee_val) => Σ;;; σ e⊢ t, [] ▷ v0) args argsv)
+         (ad : All2_dep (fun a av ev => P σ a [] av ev) a)
+         (e0 : Σ;;; cofix_env mfix σ e⊢ dbody def0, argsv ▷ vConstruct ind c cargsv),
+       P (cofix_env mfix σ) (dbody def0) argsv (vConstruct ind c cargsv) e0 ->
+       forall (e1 : is_propositional Σ ind = Some false)
+         (e2 : Σ;;; σ e⊢ (nth c brs (0, tDummy)).2, skipn pars cargsv ▷ v),
+       P σ (nth c brs (0, tDummy)).2 (skipn pars cargsv) v e2 ->
+       P σ (tCase (ind, pars) (mkApps (tCoFix mfix idx) args) brs) [] v
+         (env_eval_cofix_case Σ σ mfix idx def0 ind pars args argsv c cargsv brs v e a e0 e1 e2)) ->
+      (forall (σ : list ee_val) (c : kername) (decl : constant_body) (body : term)
+         (isdecl : declared_constant Σ c decl) (v : ee_val) (e : cst_body decl = Some body)
+         (e0 : Σ;;; [] e⊢ body, [] ▷ v),
+       P [] body [] v e0 -> P σ (tConst c) [] v (env_eval_delta Σ σ c decl body isdecl v e e0)) ->
       (forall (σ : list ee_val) (discr : term) (ind : inductive) (argsv : list ee_val)
-              (pars arg : nat) (av : ee_val),
-          Σ;;; σ e⊢ discr, [] ▷ vConstruct ind 0 argsv ->
-          P σ discr [] (vConstruct ind 0 argsv) ->
-          is_propositional Σ ind = Some false ->
-          nth_error argsv (pars + arg) = Some av -> P σ (tProj (ind, pars, arg) discr) [] av) ->
+         (pars arg : nat) (av : ee_val) (e : Σ;;; σ e⊢ discr, [] ▷ vConstruct ind 0 argsv),
+       P σ discr [] (vConstruct ind 0 argsv) e ->
+       forall (e0 : is_propositional Σ ind = Some false) (e1 : nth_error argsv (pars + arg) = Some av),
+       P σ (tProj (ind, pars, arg) discr) [] av (env_eval_proj Σ σ discr ind argsv pars arg av e e0 e1)) ->
       (forall (σ : list ee_val) (t : term) (argsv : list ee_val) (ind : inductive)
-              (c : nat) (cargsv : list ee_val) (a : term) (av : ee_val),
-          Σ;;; σ e⊢ t, argsv ▷ vConstruct ind c cargsv ->
-          P σ t argsv (vConstruct ind c cargsv) ->
-          Σ;;; σ e⊢ a, [] ▷ av -> P σ a [] av -> P σ t (argsv ++ [av]) (vConstruct ind c (cargsv ++ [av]))) ->
+         (c : nat) (cargsv : list ee_val) (a : term) (av : ee_val) (e : isApp t = false)
+         (e0 : Σ;;; σ e⊢ t, argsv ▷ vConstruct ind c cargsv),
+       P σ t argsv (vConstruct ind c cargsv) e0 ->
+       forall e1 : Σ;;; σ e⊢ a, [] ▷ av,
+       P σ a [] av e1 ->
+       P σ t (argsv ++ [av]) (vConstruct ind c (cargsv ++ [av]))
+         (env_eval_app_construct Σ σ t argsv ind c cargsv a av e e0 e1)) ->
       (forall (σ : list ee_val) (t : term) (argsv : list ee_val) (mfix : mfixpoint term)
-              (idx : nat) (σ' fargsv : list ee_val) (a : term) (av : ee_val),
-          Σ;;; σ e⊢ t, argsv ▷ vCoFix mfix idx σ' fargsv ->
-          P σ t argsv (vCoFix mfix idx σ' fargsv) ->
-          Σ;;; σ e⊢ a, [] ▷ av -> P σ a [] av -> P σ t (argsv ++ [av]) (vCoFix mfix idx σ' (fargsv ++ [av]))) ->
-      (forall σ : list ee_val, P σ tBox [] vBox) ->
-      (forall (σ : list ee_val) (na : name) (body : term), P σ (tLambda na body) [] (vLambda na body σ)) ->
+         (idx : nat) (σ' fargsv : list ee_val) (a : term) (av : ee_val) (e : isApp t = false)
+         (e0 : Σ;;; σ e⊢ t, argsv ▷ vCoFix mfix idx σ' fargsv),
+       P σ t argsv (vCoFix mfix idx σ' fargsv) e0 ->
+       forall e1 : Σ;;; σ e⊢ a, [] ▷ av,
+       P σ a [] av e1 ->
+       P σ t (argsv ++ [av]) (vCoFix mfix idx σ' (fargsv ++ [av]))
+         (env_eval_app_cofix Σ σ t argsv mfix idx σ' fargsv a av e e0 e1)) ->
+      (forall σ : list ee_val, P σ tBox [] vBox (env_eval_box_atom Σ σ)) ->
+      (forall (σ : list ee_val) (na : name) (body : term),
+       P σ (tLambda na body) [] (vLambda na body σ) (env_eval_lambda_atom Σ σ na body)) ->
       (forall (σ : list ee_val) (ind : inductive) (c : nat),
-          P σ (tConstruct ind c) [] (vConstruct ind c [])) ->
+       P σ (tConstruct ind c) [] (vConstruct ind c []) (env_eval_construct_atom Σ σ ind c)) ->
       (forall (σ : list ee_val) (mfix : mfixpoint term) (idx : nat),
-          P σ (tFix mfix idx) [] (vFix mfix idx σ [])) ->
+       P σ (tFix mfix idx) [] (vFix mfix idx σ []) (env_eval_fix_atom Σ σ mfix idx)) ->
       (forall (σ : list ee_val) (mfix : mfixpoint term) (idx : nat),
-          P σ (tCoFix mfix idx) [] (vCoFix mfix idx σ [])) ->
-      forall (σ : list ee_val) (t : term) (l : list ee_val) (e : ee_val), Σ;;; σ e⊢ t, l ▷ e -> P σ t l e.
+       P σ (tCoFix mfix idx) [] (vCoFix mfix idx σ []) (env_eval_cofix_atom Σ σ mfix idx)) ->
+      forall (σ : list ee_val) (t : term) (l : list ee_val) (e : ee_val) (e0 : Σ;;; σ e⊢ t, l ▷ e),
+      P σ t l e e0.
   Proof.
     intros until 18.
     fix f 5.
     intros σ t l e ev.
-    move f at top.
     destruct ev;
-      try solve [multimatch goal with
-                 | [H: _ |- _] => eapply H; eauto
+      try solve [match goal with
+                 | [H: _ |- _] =>
+                   match H with
+                   | f => fail 1
+                   | _ => eapply H; eauto
+                   end
                  end].
     eapply X7; eauto.
     clear -a f.
     revert args argsv a.
     fix f' 3.
     intros args argsv [].
-    - apply All2_nil.
+    - apply All2_dep_nil.
     - constructor.
-      + split; [exact e|].
-        apply f.
-        exact e.
+      + apply f.
       + apply f'.
-        exact a.
   Defined.
+
+  (*
+  Lemma env_eval_unique_sig Σ σ hd argsv v v' :
+    forall (ev1 : Σ;;; σ e⊢ hd, argsv ▷ v) (ev2 : Σ;;; σ e⊢ hd, argsv ▷ v'),
+      {| pr1 := v; pr2 := ev1 |} = {| pr1 := v'; pr2 := ev2 |}.
+  Proof.
+    intros.
+    induction ev1 in v, v', ev1, ev2 |- * using env_eval_forall_list_rect.
+    - depind ev2; try discriminate.
+      specialize (IHev1_1 _ ev2_1); noconf IHev1_1.
+      now specialize (IHev1_2 _ ev2_2); noconf IHev1_2.
+
+  Lemma env_eval_deterministic Σ σ hd argsv v v' :
+    Σ;;; σ e⊢ hd, argsv ▷ v ->
+    Σ;;; σ e⊢ hd, argsv ▷ v' ->
+    v = v'.
+  Proof.
+    intros ev1 ev2.
+    revert v' ev2.
+    induction ev1 using env_eval_forall_list_rect; intros v' ev2.
+    - depelim ev2.
+      +
+*)
 
   Inductive full_ee_val : ee_val -> Type :=
   | fvLambda na body σ :
@@ -557,7 +658,7 @@ Ltac facts :=
       all: eauto.
       apply value_final.
       admit.
-    - rewrite Nat.sub_0_r, nth_error_map, H.
+    - rewrite Nat.sub_0_r, nth_error_map, e.
       cbn.
       rewrite lift0_id.
       apply value_final.
@@ -590,7 +691,7 @@ Ltac facts :=
       + eapply value_final; admit.
       + rewrite Nat.add_0_r, map_length.
         unfold cunfold_fix.
-        rewrite nth_error_map, H.
+        rewrite nth_error_map, e2.
         cbn.
         f_equal.
         f_equal; eauto.
@@ -605,10 +706,10 @@ Ltac facts :=
         now rewrite terms_of_env_fixes.
     - rewrite !map_app, !mkApps_app.
       eapply eval_fix_value.
-      4: rewrite map_length; exact H0.
+      4: rewrite map_length; exact l.
       2: apply value_final; admit.
       2: { unfold cunfold_fix.
-           rewrite nth_error_map, H.
+           rewrite nth_error_map, e2.
            cbn.
            reflexivity. }
       auto.
@@ -616,7 +717,7 @@ Ltac facts :=
       cbn.
       eapply red_cofix_case.
       + unfold cunfold_cofix.
-        rewrite nth_error_map, H.
+        rewrite nth_error_map, e.
         cbn.
         reflexivity.
       + eapply eval_iota.
@@ -634,19 +735,17 @@ Ltac facts :=
         rewrite <- terms_of_env_cofixes.
         eapply eval_mkApps_inv in IHev1 as H'; destruct H' as (?&_&?&_).
         eapply eval_mkApps_congr.
-        3: exact e.
+        3: exact e0.
         4: eauto.
         1: eauto.
         2: apply All2_map with (g := term_of_ee_val), All2_same.
         2: intros; apply value_final; admit.
         apply All2_map.
-        eapply All2_impl; eauto.
-        cbn.
-        intros ? ? (?&?); auto.
+        apply All2_dep_nondep in ad; auto.
     - eapply eval_delta; eauto.
       now rewrite subst_empty in IHev.
     - eapply eval_proj; eauto.
-      rewrite nth_nth_error, nth_error_map, H0.
+      rewrite nth_nth_error, nth_error_map, e1.
       cbn.
       apply value_final; admit.
     - rewrite !map_app, !mkApps_app.
@@ -762,15 +861,42 @@ Lemma env_eval_app_congr Σ σ t args v t' :
         *
         econstructor.
 *)
-  Lemma env_eval_mkApps_inv' Σ σ hd args argsv' v :
-    Σ;;; σ e⊢ mkApps hd args, argsv' ▷ v ->
-    ∑ hdv argsv,
-      Σ;;; σ e⊢ hd, [] ▷ hdv ×
-      All2 (fun a av => Σ;;; σ e⊢ a, [] ▷ av) args argsv ×
-      Σ;;; σ e⊢ hd, (argsv ++ argsv') ▷ v.
+  Lemma env_eval_head_inv Σ σ t argsv v :
+    Σ;;; σ e⊢ t, argsv ▷ v ->
+    ∑ tv, Σ;;; σ e⊢ t, [] ▷ tv.
   Proof.
     Admitted.
 
+  (*
+  Lemma env_eval_tApp Σ σ hd arg argv argsv v :
+    Σ;;; σ e⊢ tApp hd arg, argsv ▷ v ->
+    Σ;;; σ e⊢ arg, [] ▷ argv ->
+    Σ;;; σ e⊢ hd, (argv :: argsv) ▷ v.
+  Proof.
+    intros ev ev'.
+    depelim ev.
+    -
+*)
+
+  (*
+  Lemma env_eval_mkApps Σ σ hd args argsv argsv' v :
+    All2 (fun a av => Σ;;; σ e⊢ a, [] ▷ av) args argsv ->
+    Σ;;; σ e⊢ mkApps hd args, argsv' ▷ v ->
+    Σ;;; σ e⊢ hd, (argsv ++ argsv') ▷ v.
+  Proof.
+    intros all ev.
+    induction all in argsv', ev |- * using All2_rev_rect; auto.
+    rewrite mkApps_app in ev.
+    cbn in ev.
+    rewrite <- app_assoc.
+    apply IHall.
+    depelim ev.
+    -
+    cbn.
+    eapply env_eval_app.
+*)
+
+  (*
   Lemma env_eval_mkApps_inv Σ σ hd args v :
     Σ;;; σ e⊢ mkApps hd args, [] ▷ v ->
     ∑ hdv argsv,
@@ -778,13 +904,17 @@ Lemma env_eval_app_congr Σ σ t args v t' :
       All2 (fun a av => Σ;;; σ e⊢ a, [] ▷ av) args argsv ×
       Σ;;; σ e⊢ hd, argsv ▷ v.
   Proof.
-    Admitted.
-    (*
     revert hd v.
     induction args using MCList.rev_ind; intros hd v ev; eauto.
     rewrite mkApps_app in ev.
     cbn in ev.
     depelim ev; try solve [destruct argsv; cbn in *; discriminate].
+    apply env_eval_head_inv in ev2 as H; destruct H as (?&?).
+    eapply IHargs in e as (?&?&?&?&?).
+    exists x1, (x2 ++ [av]).
+    split; auto.
+    split; [apply All2_app; auto|].
+    depelim e0.
     eapply IHargs in ev2.
     induction args in hd, args, v, ev |- *; eauto.
     cbn in ev.
