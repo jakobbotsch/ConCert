@@ -1,3 +1,4 @@
+From Coq Require Import CMorphisms.
 From Coq Require Import List.
 From ConCert.Extraction Require Import ClosedAux.
 From ConCert.Extraction Require Import Utils.
@@ -19,34 +20,6 @@ Import ListNotations.
 
 Section env_eval.
   Reserved Notation "Σ ;;; σ 'e⊢' t , args ▷ v" (at level 50, σ, t, v at next level).
-
-  Definition is_stuck_fix (defs : mfixpoint term) (i nargs : nat) :=
-    match nth_error defs i with
-    | Some def => nargs <=? rarg def
-    | None => false
-    end.
-
-  (*
-  Inductive ee_val : Type :=
-  | vLambda (na : name) (body : term)
-  | vFix (defs : mfixpoint term) (idx : nat
-
-  Inductive ee_val : term -> Type :=
-  | vLambda
-      (na : name) (body : term)
-      (σ : list term) (σv : All ee_val σ) : ee_val (tLambda na body)
-  | vFix
-      (defs : mfixpoint term)
-      (idx : nat)
-      (σ : list term) (σv : All ee_val σ)
-      (args : list term) (argsv : All ee_val args)
-      (is_stuck : is_stuck_fix defs idx #|args|) : ee_val (tFix defs idx)
-  | vBox : ee_val tBox
-  | vConstruct ind c args (argsv : All ee_val args) : ee_val (tConstruct ind c)
-  | vCoFix defs i args (argsv : All ee_val args) : ee_val (tCoFix defs i).
-
-  Definition ee_val_sig := ∑ t, ee_val t.
-*)
 
   Inductive ee_val : Type :=
   | vLambda
@@ -365,6 +338,29 @@ Section env_eval.
                                        (map term_of_ee_val args)
     end.
 
+  Definition teq (v v' : ee_val) : Type :=
+    term_of_ee_val v = term_of_ee_val v'.
+
+  Instance teq_equivalence : CRelationClasses.Equivalence teq.
+  Proof.
+    constructor; red; unfold teq; intros; congruence.
+  Qed.
+
+  Definition teqs := All2 teq.
+
+  Instance teqs_equivalence : CRelationClasses.Equivalence teqs.
+  Proof.
+    constructor; red.
+    - intros.
+      apply All2_same; reflexivity.
+    - intros x y eqs.
+      eapply All2_sym.
+      eapply All2_impl; eauto.
+      intros; symmetry; auto.
+    - intros; eapply All2_trans; eauto.
+      apply teq_equivalence. (* ?? why does typeclasses eauto not work? *)
+  Qed.
+
 (*Lemma env_eval_closedn Σ σ t v k :
   Σ ;;; σ e⊢ t ▷ v ->
   env_closed Σ ->
@@ -536,6 +532,16 @@ Ltac facts :=
     f_equal; apply IHn.
   Qed.
 
+  Lemma terms_of_env_cofixes_nil mfix :
+    map term_of_ee_val (env_cofixes mfix []) = cofix_subst mfix.
+  Proof.
+    rewrite terms_of_env_cofixes.
+    f_equal.
+    rewrite <- (map_id mfix) at 3.
+    apply map_ext.
+    intros []; unfold map_def; cbn; now rewrite subst_empty.
+  Qed.
+
   Lemma env_eval_eval Σ σ t args v :
     Σ;;; σ e⊢ t, args ▷ v ->
     Σ e⊢ mkApps (subst (map term_of_ee_val σ) 0 t)
@@ -668,30 +674,53 @@ Ltac facts :=
     - eapply env_eval_box; eauto.
   Qed.
 
+  (*
+  Instance env_eval_congr Σ :
+    Proper (teqs ==> eq ==> teqs ==> teq ==> arrow) (env_eval Σ).
+  Proof.
+    repeat red.
+    intros σ σ' σeq hd ? <- args args' argseq v v' veq ev.
+    induction ev
+      in σ, σ', σeq, hd, args, args', argseq, v, v', veq, ev
+      using env_eval_forall_list_rect.
+    - eapply env_eval_app.
+      + eapply IHev1; eauto; reflexivity.
+      + eapply IHev2; eauto.
+        constructor; eauto.
+        reflexivity.
+    - depelim argseq.
+      constructor.
+      eapply All2_nth_error_Some in σeq as (?&?&?); eauto.
+*)
+
+Lemma env_eval_args_congr Σ σ hd args v args' :
+  Σ;;; σ e⊢ hd, args ▷ v ->
+  All2 teq args' args ->
+  ∑ v', Σ;;; σ e⊢ hd, args' ▷ v' × teq v' v.
+Proof.
+  Admitted.
+
+  (*
+Lemma env_eval_app_congr Σ σ t args v t' :
+  Σ ;;; σ e⊢ t, args ▷ v ->
+  Σ ;;; σ e⊢ t', args ▷ v
+*)
+
   Lemma env_eval_subst Σ σ t argsv v :
     Σ ;;; [] e⊢ subst (map term_of_ee_val σ) 0 t, argsv ▷ v ->
     ∑ v',
-      Σ ;;; σ e⊢ t, argsv ▷ v' × term_of_ee_val v' = term_of_ee_val v.
+      Σ ;;; σ e⊢ t, argsv ▷ v' × teq v' v.
   Proof.
+    Admitted.
+  (*
     intros ev.
     induction t in σ, t, argsv, v, ev |- * using term_forall_list_ind; cbn in *.
-    - depelim ev.
-      + exists vBox.
-        split; auto.
-        eapply env_eval_box_app.
-      + admit.
-      + admit.
-      + admit.
-      + admit.
-      + admit.
-      + admit.
+    - admit.
     - rewrite Nat.sub_0_r in *.
       rewrite nth_error_map in ev.
       destruct nth_error eqn:nth; cbn in *.
       + rewrite lift0_id in ev.
-Lemma env_eval_app_congr Σ σ t args v t' :
-  Σ ;;; σ e⊢ t, args ▷ v ->
-  Σ ;;; σ e⊢ t', args ▷ v
+
         exists e.
         split; [econstructor; eauto|].
         apply env_eval_eval in ev.
@@ -732,58 +761,429 @@ Lemma env_eval_app_congr Σ σ t args v t' :
         destruct e; cbn in *; try discriminate.
         *
         econstructor.
+*)
+  Lemma env_eval_mkApps_inv' Σ σ hd args argsv' v :
+    Σ;;; σ e⊢ mkApps hd args, argsv' ▷ v ->
+    ∑ hdv argsv,
+      Σ;;; σ e⊢ hd, [] ▷ hdv ×
+      All2 (fun a av => Σ;;; σ e⊢ a, [] ▷ av) args argsv ×
+      Σ;;; σ e⊢ hd, (argsv ++ argsv') ▷ v.
+  Proof.
+    Admitted.
+
+  Lemma env_eval_mkApps_inv Σ σ hd args v :
+    Σ;;; σ e⊢ mkApps hd args, [] ▷ v ->
+    ∑ hdv argsv,
+      Σ;;; σ e⊢ hd, [] ▷ hdv ×
+      All2 (fun a av => Σ;;; σ e⊢ a, [] ▷ av) args argsv ×
+      Σ;;; σ e⊢ hd, argsv ▷ v.
+  Proof.
+    Admitted.
+    (*
+    revert hd v.
+    induction args using MCList.rev_ind; intros hd v ev; eauto.
+    rewrite mkApps_app in ev.
+    cbn in ev.
+    depelim ev; try solve [destruct argsv; cbn in *; discriminate].
+    eapply IHargs in ev2.
+    induction args in hd, args, v, ev |- *; eauto.
+    cbn in ev.
+    apply IHargs in ev as (hdv&argsv&ev_hd&ev_args&ev).
+    depelim ev_hd; try solve [destruct argsv0; cbn in *; discriminate].
+*)
+
+  Lemma env_eval_term_of_ee_val Σ σ v v' :
+    full_ee_val v ->
+    Σ;;; σ e⊢ term_of_ee_val v, [] ▷ v' ->
+    teq v' v.
+  Proof.
+    Admitted.
 
   Lemma eval_env_eval' Σ hd args tv :
     Σ e⊢ mkApps hd args ▷ tv ->
-    ∑ argsv v,
+    ∑ argsv,
       All2 (fun a av => Σ ;;; [] e⊢ a, [] ▷ av) args argsv
-      × Σ ;;; [] e⊢ hd, argsv ▷ v
+      × ∑ v, Σ ;;; [] e⊢ hd, argsv ▷ v
       × term_of_ee_val v = tv.
   Proof.
     intros ev.
-    depind ev.
+    remember (mkApps hd args) eqn:eq.
+    induction ev in hd, args, eq |- *.
     - destruct args as [|? ? _] using MCList.rev_ind.
       + cbn in *; subst.
-        specialize (IHev1 _ [] _ eq_refl) as (?&?&?&?&?).
-        specialize (IHev2 _ [] _ eq_refl) as (?&?&?&?&?).
+        exists []; split; auto.
+        specialize (IHev1 _ [] eq_refl) as (?&?&?&?&?).
+        specialize (IHev2 _ [] eq_refl) as (?&?&?&?&?).
         depelim a0.
         depelim a1.
         destruct x0; cbn in *; try discriminate; try solve_discr.
-        exists [], vBox.
-        split; auto.
+        exists vBox.
         split; auto.
         eapply env_eval_app; eauto.
         eapply env_eval_box with (argsv := []).
         auto.
-      + rewrite mkApps_app in H; cbn in H; noconf H.
-        specialize (IHev1 _ _ _ eq_refl) as (?&?&?&?&?).
-        specialize (IHev2 _ [] _ eq_refl) as (?&?&?&?&?).
+      + rewrite mkApps_app in eq; cbn in eq; noconf eq.
+        specialize (IHev1 _ _ eq_refl) as (?&?&?&?&?).
+        specialize (IHev2 _ [] eq_refl) as (?&?&?&?&?).
         depelim a0.
-        exists (x ++ [x2]), vBox.
-        split; [apply All2_app; auto|].
+        exists (x ++ [x2]); split; [apply All2_app; auto|].
+        exists vBox.
         split; auto.
         destruct x0; cbn in *; try discriminate; try solve_discr.
         eapply env_eval_box.
         auto.
-    - destruct args as [|? ? _] using MCList.rev_ind.
+    - destruct args as [|? ? _] using MCList.rev_ind; cbn in *; subst.
       + cbn in *; subst.
-        specialize (IHev1 _ [] _ eq_refl) as (?&?&?&?&?).
-        specialize (IHev2 _ [] _ eq_refl) as (?&?&?&?&?).
-        specialize (IHev3 _ [] _ eq_refl) as (?&?&?&?&?).
+        specialize (IHev1 _ [] eq_refl) as (?&?&?&?&?).
+        specialize (IHev2 _ [] eq_refl) as (?&?&?&?&?).
+        specialize (IHev3 _ [] eq_refl) as (?&?&?&?&?).
         depelim a0.
         depelim a1.
         depelim a2.
         destruct x0; cbn in *; try discriminate; try solve_discr.
         noconf e0.
-        eexists [], _.
-        split; auto.
-        exists [], x4.
-        split; auto.
+        subst.
+        exists []; split; auto.
+        rewrite closed_subst in e3 by admit.
+        rewrite <- subst_app_simpl in e3.
+        apply env_eval_subst with (σ := [_] ++ _) in e3 as (?&?&?).
+        cbn in *.
+        eexists x.
         split; auto.
         eapply env_eval_app; eauto.
         eapply env_eval_beta with (argsv := []); eauto.
+      + rewrite mkApps_app in eq; cbn in eq; noconf eq.
+        specialize (IHev1 _ _ eq_refl) as (?&?&?&?&?).
+        specialize (IHev2 _ [] eq_refl) as (?&?&?&?&?).
+        specialize (IHev3 _ [] eq_refl) as (?&?&?&?&?).
+        depelim a1.
+        depelim a2.
+        destruct x0; cbn in *; try discriminate; try solve_discr.
         noconf e0.
+        subst.
+        exists (x ++ [x2]); split; [apply All2_app; auto|].
+        rewrite closed_subst in e3 by admit.
+        rewrite <- subst_app_simpl in e3.
+        apply env_eval_subst with (σ := [_] ++ _) in e3 as (?&?&?).
+        exists x0.
+        split; auto.
+        eapply env_eval_beta; eauto.
+    - destruct args as [|? ? _] using MCList.rev_ind; cbn in *;
+        [subst|rewrite mkApps_app in eq; cbn in *; discriminate].
+      exists []; split; auto.
+      specialize (IHev1 _ [] eq_refl) as (?&?&?&?&?).
+      specialize (IHev2 _ [] eq_refl) as (?&?&?&?&?).
+      depelim a.
+      depelim a0.
+      subst.
+      rewrite closed_subst in e1 by admit.
+      apply env_eval_subst with (σ := [_]) in e1 as (?&?&?).
+      exists x.
+      eauto using env_eval.
+    - destruct args as [|? ? _] using MCList.rev_ind; cbn in *;
+        [subst|rewrite mkApps_app in eq; cbn in *; discriminate].
+      exists []; split; auto.
+      specialize (IHev1 _ [] eq_refl) as (?&?&?&?&?).
+      specialize (IHev2 _ [] eq_refl) as (?&?&?&?&?).
+      depelim a.
+      depelim a0.
+      destruct x0; cbn in *; try discriminate; try solve_discr.
+      noconf H.
+      eapply env_eval_mkApps_inv in e2 as (hdv&argsv&?&?&?).
+      rewrite <- (map_id argsv), <- map_skipn in a.
+      apply All2_map_inv in a.
+      eapply env_eval_args_congr in e2 as (?&?&?).
+      2: { eapply All2_impl; eauto.
+           cbn; intros.
+           admit. }
+      exists x.
+      split; auto.
+      eapply env_eval_iota; eauto.
+    - discriminate.
+    - destruct args as [|? ? _] using MCList.rev_ind; cbn in *; subst.
+      + cbn in *; subst.
+        exists []; split; auto.
+        specialize (IHev1 _ [] eq_refl) as (?&?&?&?&?).
+        specialize (IHev2 _ [] eq_refl) as (?&?&?&?&?).
+        specialize (IHev3 _ [] eq_refl) as (?&?&?&?&?).
+        depelim a0.
+        depelim a1.
+        depelim a2.
+        destruct x0; cbn in *; try discriminate; try solve_discr.
+        noconf H.
+        rewrite <- closed_unfold_fix_cunfold_eq in e by admit.
+        change (tApp ?h ?a) with (mkApps h [a]) in e4.
+        rewrite mkApps_nested in e4.
+        rewrite <- map_app with (l' := [x2]) in e4.
+        apply env_eval_mkApps_inv in e4 as (hdv&argsv&?&?&ev_unf).
+        unfold unfold_fix in e.
+        rewrite nth_error_map, map_length in e.
+        destruct nth_error eqn:nth; [|discriminate].
+        cbn in *.
+        noconf e.
+        rewrite Nat.add_0_r in *.
+        rewrite <- terms_of_env_fixes in ev_unf.
+        rewrite <- (env_fixes_length mfix0 σ) in ev_unf.
+        erewrite <- (map_length _ (env_fixes _ _)) in ev_unf.
+        rewrite <- subst_app_simpl with (k := 0) in ev_unf.
+        rewrite <- map_app in ev_unf.
+        apply env_eval_subst in ev_unf as (?&ev_unf&?).
+        eapply env_eval_args_congr in ev_unf as (fv&?&?).
+        2: { rewrite <- (map_id argsv) in a0.
+             apply All2_map_inv in a0.
+             eapply All2_impl; eauto.
+             cbn; intros.
+             admit. }
+        exists fv.
+        split; [|unfold teq in *; congruence].
+        eapply env_eval_app; eauto.
+        eapply env_eval_fix with (argsv := []); eauto.
+      + rewrite mkApps_app in eq; noconf eq.
+        specialize (IHev1 _ _ eq_refl) as (?&?&?&?&?).
+        specialize (IHev2 _ [] eq_refl) as (?&?&?&?&?).
+        specialize (IHev3 _ [] eq_refl) as (?&?&?&?&?).
+        depelim a1.
+        depelim a2.
+        destruct x0; cbn in *; try discriminate; try solve_discr.
+        noconf H.
+        exists (x ++ [x2]); split; [apply All2_app; auto|].
+        rewrite <- closed_unfold_fix_cunfold_eq in e by admit.
+        change (tApp ?h ?a) with (mkApps h [a]) in e4.
+        rewrite mkApps_nested in e4.
+        rewrite <- map_app with (l' := [x2]) in e4.
+        apply env_eval_mkApps_inv in e4 as (hdv&argsv&?&?&ev_unf).
+        unfold unfold_fix in e.
+        rewrite nth_error_map, map_length in e.
+        destruct nth_error eqn:nth; [|discriminate].
+        cbn in *.
+        noconf e.
+        rewrite Nat.add_0_r in *.
+        rewrite <- terms_of_env_fixes in ev_unf.
+        rewrite <- (env_fixes_length mfix0 σ) in ev_unf.
+        erewrite <- (map_length _ (env_fixes _ _)) in ev_unf.
+        rewrite <- subst_app_simpl with (k := 0) in ev_unf.
+        rewrite <- map_app in ev_unf.
+        apply env_eval_subst in ev_unf as (?&ev_unf&?).
+        eapply env_eval_args_congr in ev_unf as (fv&?&?).
+        2: { rewrite <- (map_id argsv) in a1.
+             apply All2_map_inv in a1.
+             eapply All2_impl; eauto.
+             cbn; intros.
+             admit. }
+        exists fv.
+        split; [|unfold teq in *; congruence].
+        eapply env_eval_fix with (argsv := x); eauto.
+    - destruct args as [|? ? _] using MCList.rev_ind; cbn in *; subst.
+      + cbn in *; subst.
+        exists []; split; auto.
+        specialize (IHev1 _ [] eq_refl) as (?&?&?&?&?).
+        specialize (IHev2 _ [] eq_refl) as (?&?&?&?&?).
+        depelim a0.
+        depelim a1.
+        destruct x0; cbn in *; try discriminate; try solve_discr.
+        noconf H.
+        exists (vFix mfix0 idx σ (args ++ [x2])).
+        cbn.
+        rewrite map_app, mkApps_app; split; auto.
+        unfold cunfold_fix in e.
+        rewrite nth_error_map in e.
+        destruct nth_error eqn:nth; [|discriminate].
+        rewrite map_length in l.
+        cbn in *.
+        noconf e.
+        eapply env_eval_app; eauto.
+        eapply env_eval_fix_value with (argsv := []); eauto.
+      + rewrite mkApps_app in eq; noconf eq.
+        specialize (IHev1 _ _ eq_refl) as (?&?&?&?&?).
+        specialize (IHev2 _ [] eq_refl) as (?&?&?&?&?).
+        depelim a1.
+        destruct x0; cbn in *; try discriminate; try solve_discr.
+        noconf H.
+        exists (x ++ [x2]); split; [apply All2_app; auto|].
+        exists (vFix mfix0 idx σ (args0 ++ [x2])).
+        cbn.
+        rewrite map_app, mkApps_app; split; auto.
+        unfold cunfold_fix in e.
+        rewrite nth_error_map in e.
+        destruct nth_error eqn:nth; [|discriminate].
+        rewrite map_length in l.
+        cbn in *.
+        noconf e.
+        eapply env_eval_fix_value; eauto.
+    - destruct args as [|? ? _] using MCList.rev_ind; cbn in *;
+        [subst|rewrite mkApps_app in eq; cbn in *; discriminate].
+      exists []; split; auto.
+      specialize (IHev _ [] eq_refl) as (?&?&?&?&?).
+      depelim a.
+      subst.
+      depelim e0; try solve [destruct argsv; cbn in *; discriminate].
+      2: admit.
+      rewrite <- closed_unfold_cofix_cunfold_eq in e by admit.
+      unfold unfold_cofix in e.
+      destruct nth_error eqn:nth; [|discriminate].
+      noconf e.
+      rewrite <- terms_of_env_cofixes_nil in e0_1.
+      eapply env_eval_mkApps_inv in e0_1 as (fnv&args0v&?&?&?).
+      eapply env_eval_subst in e1 as (ctorv&?&?).
+      unfold teq in t.
+      destruct ctorv; cbn in *; try discriminate; try solve_discr.
+      noconf H.
+      eapply env_eval_args_congr in e0_2 as (fv&?&?).
+      2: { unfold teq.
+           instantiate (1 := skipn pars args).
+           apply All2_skipn.
+           apply All2_map_inv with (f := term_of_ee_val) (g := term_of_ee_val).
+           rewrite H0.
+           apply All2_same; reflexivity. }
+      exists fv.
+      split; auto.
+      eapply env_eval_cofix_case; eauto.
+      unfold cofix_env; rewrite app_nil_r.
+      auto.
+    - destruct args as [|? ? _] using MCList.rev_ind; cbn in *;
+        [subst|rewrite mkApps_app in eq; cbn in *; discriminate].
+      exists []; split; auto.
+      specialize (IHev _ [] eq_refl) as (?&?&?&?&?).
+      depelim a.
+      subst.
+      admit.
+    - destruct args as [|? ? _] using MCList.rev_ind; cbn in *;
+        [subst|rewrite mkApps_app in eq; cbn in *; discriminate].
+      exists []; split; auto.
+      specialize (IHev _ [] eq_refl) as (?&?&?&?&?).
+      depelim a.
+      subst.
+      exists x0.
+      split; auto.
+      eapply env_eval_delta; eauto.
+    - destruct args as [|? ? _] using MCList.rev_ind; cbn in *;
+        [subst|rewrite mkApps_app in eq; cbn in *; discriminate].
+      exists []; split; auto.
+      specialize (IHev1 _ [] eq_refl) as (?&?&?&?&?).
+      specialize (IHev2 _ [] eq_refl) as (?&?&?&?&?).
+      depelim a.
+      depelim a0.
+      destruct x0; cbn in *; try discriminate; try solve_discr.
+      noconf H.
+      rewrite nth_nth_error in e2.
+      rewrite nth_error_map in e2.
+      destruct nth_error eqn:nth; cbn in *.
+      2: { depelim e2; solve [destruct argsv; cbn in *; discriminate]. }
+      eapply env_eval_term_of_ee_val in e2.
+      2: admit.
+      exists e1.
+      split; auto.
+      eapply env_eval_proj; eauto.
+    - discriminate.
+    - destruct args as [|? ? _] using MCList.rev_ind; cbn in *.
+      + subst.
+        exists []; split; auto.
+        specialize (IHev1 _ [] eq_refl) as (?&?&?&?&?).
+        specialize (IHev2 _ [] eq_refl) as (?&?&?&?&?).
+        depelim a0.
+        depelim a1.
+        apply eval_to_value in ev1.
+        destruct ev1.
+        * destruct t; cbn in *; try discriminate.
+          -- destruct x0; cbn in *; try discriminate; try solve_discr.
+             noconf H.
+             destruct args; [|discriminate].
+             exists (vConstruct i1 n [x2]).
+             split; eauto using env_eval.
+             econstructor; eauto.
+             eapply env_eval_app_construct with (argsv := []) (cargsv := []); eauto.
+          -- destruct x0; cbn in *; try discriminate; try solve_discr.
+             noconf H.
+             destruct args; [|discriminate].
+             exists (vCoFix mfix n σ [x2]).
+             split; eauto using env_eval.
+             econstructor; eauto.
+             eapply env_eval_app_cofix with (argsv := []) (fargsv := []); eauto.
+        * destruct t; cbn in *; try discriminate.
+          -- destruct x0; cbn in *; try discriminate; try solve_discr.
+             noconf H.
+             exists (vConstruct i1 n (args ++ [x2])).
+             cbn.
+             rewrite map_app, mkApps_app.
+             split; auto.
+             eapply env_eval_app; eauto.
+             eapply env_eval_app_construct with (argsv := []); eauto.
+          -- destruct x0; cbn in *; try discriminate; try solve_discr.
+             noconf H.
+             exists (vCoFix mfix n σ (args ++ [x2])).
+             cbn.
+             rewrite map_app, mkApps_app.
+             split; auto.
+             eapply env_eval_app; eauto.
+             eapply env_eval_app_cofix with (argsv := []); eauto.
+        * destruct f0; try discriminate.
+          rewrite isLambda_mkApps, isFixApp_mkApps in i by easy.
+          discriminate.
+      + rewrite mkApps_app in eq; noconf eq.
+        specialize (IHev1 _ _ eq_refl) as (?&?&?&?&?).
+        specialize (IHev2 _ [] eq_refl) as (?&?&?&?&?).
+        depelim a1.
+        exists (x ++ [x2]).
+        split; [apply All2_app; auto|].
+        apply eval_to_value in ev1.
+        destruct ev1.
+        * destruct t; cbn in *; try discriminate.
+          -- destruct x0; cbn in *; try discriminate; try solve_discr.
+             noconf H.
+             destruct args0; [|discriminate].
+             exists (vConstruct i1 n [x2]).
+             cbn.
+             split; auto.
+             eapply env_eval_app_construct with (argsv := x) (cargsv := []); eauto.
+          -- destruct x0; cbn in *; try discriminate; try solve_discr.
+             noconf H.
+             destruct args0; [|discriminate].
+             exists (vCoFix mfix n σ [x2]).
+             split; auto.
+             eapply env_eval_app_cofix with (argsv := x) (fargsv := []); eauto.
+        * destruct t; cbn in *; try discriminate.
+          -- destruct x0; cbn in *; try discriminate; try solve_discr.
+             noconf H.
+             exists (vConstruct i1 n (args0 ++ [x2])).
+             cbn.
+             rewrite map_app, mkApps_app.
+             split; auto.
+             eapply env_eval_app_construct; eauto.
+          -- destruct x0; cbn in *; try discriminate; try solve_discr.
+             noconf H.
+             exists (vCoFix mfix n σ (args0 ++ [x2])).
+             cbn.
+             rewrite map_app, mkApps_app.
+             split; auto.
+             eapply env_eval_app_cofix; eauto.
+        * destruct f; try discriminate.
+          rewrite isLambda_mkApps, isFixApp_mkApps in i by easy.
+          discriminate.
+    - subst.
+      destruct args using MCList.rev_ind; [|rewrite mkApps_app in i; discriminate].
+      cbn in *.
+      exists []; split; auto.
+      destruct hd; try discriminate.
+      all: eauto using env_eval.
+      1: { eexists; split; eauto using env_eval.
+           cbn.
+           now rewrite subst_empty. }
+      all: eexists; split; eauto using env_eval.
+      all: cbn.
+      all: rewrite map_ext with (g := fun x => x)
+        by (now intros []; unfold map_def; rewrite subst_empty).
+      all: now rewrite map_id.
+  Admitted.
 
+  Lemma eval_env_eval Σ t v :
+    Σ e⊢ t ▷ v ->
+    ∑ v', Σ ;;; [] e⊢ t, [] ▷ v' × term_of_ee_val v' = v.
+  Proof.
+    intros ev.
+    eapply eval_env_eval' with (args := []) in ev as (?&all&?).
+    depelim all.
+    auto.
+  Qed.
 
 End env_eval.
 
