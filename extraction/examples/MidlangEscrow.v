@@ -34,22 +34,22 @@ Instance EscrowMidlangBoxes : MidlangPrintConfig :=
      print_full_names := true; (* full names to avoid clashes*)|}.
 
 Definition TT_escrow : list (kername * string) :=
-  [    remap <%% bool %%> "Bool"
-     ; remap <%% @Address %%> "Int"].
+  [    remap <%%% bool %%%> "Bool"
+     ; remap <%%% @Address %%%> "Int"].
 
 Definition midlang_translation_map :=
   Eval compute in
-        [(<%% @current_slot %%>, "current_slot");
-        (<%% @account_balance %%>, "account_balance");
-        (<%% @address_eqb %%>, "Order.eq");
-        (<%% @ctx_amount %%>, "ctx_amount");
-        (<%% @ctx_from %%>, "ctx_from");
-        (<%% @Chain %%>, "ConCertChain");
-        (<%% @ContractCallContext %%>, "ConCertCallContext");
-        (<%% @ConCert.Execution.Blockchain.ActionBody %%>, "ConCertAction");
-        (<%% @ChainBase %%>, "ChainBaseWTF");
-        (<%% @ctx_contract_address %%>, "contract_address");
-        (<%% @Amount %%>,"Z" )].
+        [(<%%% @current_slot %%%>, "current_slot");
+        (<%%% @account_balance %%%>, "account_balance");
+        (<%%% @address_eqb %%%>, "Order.eq");
+        (<%%% @ctx_amount %%%>, "ctx_amount");
+        (<%%% @ctx_from %%%>, "ctx_from");
+        (<%%% @Chain %%%>, "ConCertChain");
+        (<%%% @ContractCallContext %%%>, "ConCertCallContext");
+        (<%%% @ConCert.Execution.Blockchain.ActionBody %%%>, "ConCertAction");
+        (<%%% @ChainBase %%%>, "ChainBaseWTF");
+        (<%%% @ctx_contract_address %%%>, "contract_address");
+        (<%%% @Amount %%%>,"Z" )].
 
 Definition midlang_escrow_translate (name : kername) : option string :=
   match find (fun '(key, _) => eq_kername key name) (TT_escrow ++ midlang_translation_map) with
@@ -65,20 +65,20 @@ MetaCoq Run (p <- tmQuoteRecTransp Escrow.receive false ;;
 
 Open Scope bool.
 Definition should_inline kn :=
-  eq_kername kn <%% @Monads.bind %%>
-  || eq_kername kn <%% Monads.Monad_option %%>
+  eq_kername kn <%%% @Monads.bind %%%>
+  || eq_kername kn <%%% Monads.Monad_option %%%>
   || if String.index 0 "setter_from_getter" (string_of_kername kn) then true else false.
 
 Definition ignored_concert_types :=
   Eval compute in
-        [<%% @ActionBody %%>;
-         <%% @Address %%>;
-         <%% @Amount %%>;
-         <%% @ChainBase %%>;
-         <%% @Chain %%>;
-         <%% @ContractCallContext %%>;
-         <%% @SerializedValue %%>;
-         <%% @RecordSet.SetterFromGetter %%>].
+        [<%%% @ActionBody %%%>;
+         <%%% @Address %%%>;
+         <%%% @Amount %%%>;
+         <%%% @ChainBase %%%>;
+         <%%% @Chain %%%>;
+         <%%% @ContractCallContext %%%>;
+         <%%% @SerializedValue %%%>;
+         <%%% @RecordSet.SetterFromGetter %%%>].
 
 Import ResultMonad.
 
@@ -105,7 +105,7 @@ Definition escrow_extract :=
   extract_template_env_specialize
     extract_params
     escrow_env
-    (KernameSet.singleton <%% @Escrow.receive %%>)
+    (KernameSet.singleton <%%% @Escrow.receive %%%>)
      (fun kn => contains kn (ignored_concert_types
                            ++ map fst midlang_translation_map
                            ++ map fst TT_escrow)).

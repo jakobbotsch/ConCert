@@ -86,7 +86,7 @@ Definition printLiquidityDefs (prefix : string) (Σ : global_env)
   end.
 
 Definition liquidity_ignore_default :=
-  [<%% prod %%>].
+  [<%%% prod %%%>].
 
 (* We assume the structure of the context from the [PreludeExt]:
   current_time , sender_addr, sent_amount, acc_balance *)

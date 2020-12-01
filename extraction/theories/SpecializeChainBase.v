@@ -30,9 +30,6 @@ From MetaCoq.Template Require Import utils.
 Import MonadNotation.
 Local Open Scope string.
 
-Definition ChainBase_kername : kername :=
-  <%% ChainBase %%>.
-
 Section ChainBaseSpecialization.
   Context (replacement_term : term).
 
@@ -174,19 +171,18 @@ Section ChainBaseSpecialization.
     match decl with
     | ConstantDecl cst =>
       let remove := match cst_type cst with
-                    | tProd _ (tInd ind _) _ =>
-                      eq_kername (inductive_mind ind) (ChainBase_kername)
+                    | tProd _ (tInd ind _) _ => eq_inductive ind <%% ChainBase %%>
                     | _ => false
                     end in
 
       type <- specialize_type specialized kn [] remove (cst_type cst);;
       body <- match cst_body cst with
               | Some body => body <- specialize_body specialized kn [] remove body;;
-                              ret (Some body)
+                             ret (Some body)
               | None => ret None
               end;;
 
-      ret (if remove then kn :: specialized else specialized,
+      ret (Monad := Monad_result) (if remove then kn :: specialized else specialized,
             ConstantDecl
               {| cst_type := type;
                 cst_body := body;
@@ -195,8 +191,7 @@ Section ChainBaseSpecialization.
     | InductiveDecl mib =>
       let params := rev (ind_params mib) in
       let remove := match params with
-                    | {| decl_type := tInd ind _ |} :: _ =>
-                      eq_kername (inductive_mind ind) ChainBase_kername
+                    | {| decl_type := tInd ind _ |} :: _ => eq_inductive ind <%% ChainBase %%>
                     | _ => false
                     end in
       let go '(params, Γ) cdecl :=
@@ -261,6 +256,7 @@ Section ChainBaseSpecialization.
                 ind_universes := ind_universes mib;
                 ind_variance := ind_variance mib; |})
     end.
+
 End ChainBaseSpecialization.
 
 Definition axiomatized_ChainBase := 0.
@@ -270,21 +266,17 @@ Definition axiomatized_ChainBase_kername : kername :=
 
 Definition axiomatized_ChainBase_decl : global_decl :=
   ConstantDecl
-    {| cst_type :=
-          tInd
-            {| inductive_mind := ChainBase_kername;
-              inductive_ind := 0; |}
-            [];
-        cst_body := None;
-        cst_universes := Monomorphic_ctx ContextSet.empty |}.
+    {| cst_type := tInd <%% ChainBase %%> [];
+       cst_body := None;
+       cst_universes := Monomorphic_ctx ContextSet.empty |}.
 
 (* Specialize ChainBase away in all definitions in an environment.
     Note: this will also add an axiomatized chain base to the environment. *)
 Fixpoint specialize_env_rev (Σ : global_env) : result global_env string :=
   match Σ with
-  | [] => ret []
+  | [] => ret (Monad := Monad_result) []
   | (name, decl) :: Σ =>
-    if eq_kername name ChainBase_kername then
+    if eq_kername name <%%% ChainBase %%%> then
       let rep_term := tConst axiomatized_ChainBase_kername [] in
       let go '(specialized, newΣ) '(name, decl) :=
           '(specialized, decl) <- specialize_decl rep_term specialized name decl;;

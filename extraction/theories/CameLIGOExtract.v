@@ -129,71 +129,70 @@ Definition printCameLIGODefs (prefix : string) (Σ : TemplateEnvironment.global_
   | Err e => inr e
   end.
 
-
-Definition CameLIGO_ignore_default {Base : ChainBase} :=
+Definition CameLIGO_ignore_default {Base : ChainBase} : list kername :=
   [
-      <%% prod %%>
-    ; <%% @Chain %%>
-    ; <%% @ActionBody %%>
-    ; <%% @ChainBase %%>
-    ; <%% axiomatized_ChainBase %%>
-    ; <%% Amount %%>
-    ; <%% @Address %%>
-    ; <%% @address_eqdec %%>
-    ; <%% @address_countable %%>
-    ; <%% @ContractCallContext %%>
-    ; <%% @ctx_from %%>
-    ; <%% @ctx_amount %%>
-    ; <%% @ctx_contract_address %%>
-    ; <%% @SerializedValue %%>
-    ; <%% @SerializedType %%>
+      <%%% prod %%%>
+    ; <%%% @Chain %%%>
+    ; <%%% @ActionBody %%%>
+    ; <%%% @ChainBase %%%>
+    ; <%%% axiomatized_ChainBase %%%>
+    ; <%%% Amount %%%>
+    ; <%%% @Address %%%>
+    ; <%%% @address_eqdec %%%>
+    ; <%%% @address_countable %%%>
+    ; <%%% @ContractCallContext %%%>
+    ; <%%% @ctx_from %%%>
+    ; <%%% @ctx_amount %%%>
+    ; <%%% @ctx_contract_address %%%>
+    ; <%%% @SerializedValue %%%>
+    ; <%%% @SerializedType %%%>
   ].
 
 Definition TT_remap_default : list (kername * string) :=
   [
     (* types *)
-    remap <%% Z %%> "tez"
-  ; remap <%% N %%> "nat"
-  ; remap <%% nat %%> "nat"
-  ; remap <%% bool %%> "bool"
-  ; remap <%% unit %%> "unit"
-  ; remap <%% list %%> "list"
-  ; remap <%% @fst %%> "fst"
-  ; remap <%% @snd %%> "snd"
-  ; remap <%% option %%> "option"
-  ; remap <%% gmap.gmap %%> "map"
-  ; remap <%% positive %%> "nat"
-  ; remap <%% Amount %%> "tez"
-  ; remap <%% @Address %%> "address"
-  (* ; remap <%% @ContractCallContext %%> "(adress * (address * int))" *)
+    remap <%%% Z %%%> "tez"
+  ; remap <%%% N %%%> "nat"
+  ; remap <%%% nat %%%> "nat"
+  ; remap <%%% bool %%%> "bool"
+  ; remap <%%% unit %%%> "unit"
+  ; remap <%%% list %%%> "list"
+  ; remap <%%% @fst %%%> "fst"
+  ; remap <%%% @snd %%%> "snd"
+  ; remap <%%% option %%%> "option"
+  ; remap <%%% gmap.gmap %%%> "map"
+  ; remap <%%% positive %%%> "nat"
+  ; remap <%%% Amount %%%> "tez"
+  ; remap <%%% @Address %%%> "address"
+  (* ; remap <%%% @ContractCallContext %%%> "(adress * (address * int))" *)
 
   (* operations *)
-  ; remap <%% List.fold_left %%> "List.fold"
-  ; remap <%% Pos.add %%> "addNat"
-  ; remap <%% Pos.sub %%> "subNat"
-  ; remap <%% Pos.leb %%> "leNat"
-  ; remap <%% Pos.eqb %%> "eqNat"
-  ; remap <%% Z.add %%> "addTez"
-  ; remap <%% Z.sub %%> "subTez"
-  ; remap <%% Z.leb %%> "leTez"
-  ; remap <%% Z.ltb %%> "ltTez"
-  ; remap <%% Z.eqb %%> "eqTez"
-  ; remap <%% Z.gtb %%> "gtbTez"
-  ; remap <%% N.add %%> "addInt"
-  ; remap <%% N.sub %%> "subInt"
-  ; remap <%% N.leb %%> "leInt"
-  ; remap <%% N.ltb %%> "ltInt"
-  ; remap <%% N.eqb %%> "eqInt"
-  ; remap <%% andb %%> "andb"
-  ; remap <%% negb %%> "not"
-  ; remap <%% orb %%> "orb"
+  ; remap <%%% List.fold_left %%%> "List.fold"
+  ; remap <%%% Pos.add %%%> "addNat"
+  ; remap <%%% Pos.sub %%%> "subNat"
+  ; remap <%%% Pos.leb %%%> "leNat"
+  ; remap <%%% Pos.eqb %%%> "eqNat"
+  ; remap <%%% Z.add %%%> "addTez"
+  ; remap <%%% Z.sub %%%> "subTez"
+  ; remap <%%% Z.leb %%%> "leTez"
+  ; remap <%%% Z.ltb %%%> "ltTez"
+  ; remap <%%% Z.eqb %%%> "eqTez"
+  ; remap <%%% Z.gtb %%%> "gtbTez"
+  ; remap <%%% N.add %%%> "addInt"
+  ; remap <%%% N.sub %%%> "subInt"
+  ; remap <%%% N.leb %%%> "leInt"
+  ; remap <%%% N.ltb %%%> "ltInt"
+  ; remap <%%% N.eqb %%%> "eqInt"
+  ; remap <%%% andb %%%> "andb"
+  ; remap <%%% negb %%%> "not"
+  ; remap <%%% orb %%%> "orb"
 
   (* Maps *)
-  ; remap <%% @stdpp.base.insert %%> "Map.add"
-  ; remap <%% @stdpp.base.lookup %%> "Map.find_opt"
-  ; remap <%% @stdpp.base.empty %%> "Map.empty"
-  ; remap <%% @address_eqdec %%> ""
-  ; remap <%% @address_countable %%> ""
+  ; remap <%%% @stdpp.base.insert %%%> "Map.add"
+  ; remap <%%% @stdpp.base.lookup %%%> "Map.find_opt"
+  ; remap <%%% @stdpp.base.empty %%%> "Map.empty"
+  ; remap <%%% @address_eqdec %%%> ""
+  ; remap <%%% @address_countable %%%> ""
   ].
 
 Definition CameLIGO_rename_default :=

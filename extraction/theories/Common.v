@@ -9,7 +9,24 @@ From MetaCoq.Template Require Import utils.
 From MetaCoq.PCUIC Require PCUICAst.
 From MetaCoq.SafeChecker Require Import PCUICSafeChecker.
 
-(** Extracts a constant name, inductive name or returns None *)
+Definition to_ref (t : Ast.term) : option global_reference :=
+  match t with
+  | Ast.tConst kn _ => Some (ConstRef kn)
+  | Ast.tInd ind _ => Some (IndRef ind)
+  | Ast.tConstruct ind c _ => Some (ConstructRef ind c)
+  | _ => None
+  end.
+
+Notation "<%% t %%>" :=
+  (ltac:(let p y :=
+             let e := eval cbv in (to_ref y) in
+             lazymatch e with
+             | @Some _ (ConstRef ?kn) => exact kn
+             | @Some _ (IndRef ?ind) => exact ind
+             | @Some _ (ConstructRef ?ind ?c) => exact (ind, c)
+             | _ => fail 1 "not a glob ref"
+             end in quote_term t p)).
+
 Definition to_kername (t : Ast.term) : option kername :=
   match t with
   | Ast.tConst c _ => Some c
@@ -17,14 +34,14 @@ Definition to_kername (t : Ast.term) : option kername :=
   | _ => None
   end.
 
-Notation "<%% t %%>" :=
+Notation "<%%% t %%%>" :=
   (ltac:(let p y :=
              let e := eval cbv in (to_kername y) in
-             match e with
+             lazymatch e with
              | @Some _ ?kn => exact kn
-             | _ => fail "not a name"
+             | _ => fail 1 "not a kername"
              end in quote_term t p)).
-             
+
 Definition result_of_typing_result
            {A}
            (Σ : PCUICAst.global_env_ext)

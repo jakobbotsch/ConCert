@@ -89,23 +89,23 @@ Definition exist_def := "let exist_ a = a".
 
 (** A translation table for definitions we want to remap. The corresponding top-level definitions will be *ignored* *)
 Definition TT_remap : list (kername * string) :=
-  [ remap <%% bool %%> "bool"
-  ; remap <%% list %%> "list"
-  ; remap <%% Amount %%> "tez"
-  ; remap <%% address_coq %%> "address"
-  ; remap <%% time_coq %%> "timestamp"
-  ; remap <%% option %%> "option"
-  ; remap <%% Z.add %%> "addInt"
-  ; remap <%% Z.sub %%> "subInt"
-  ; remap <%% Z.leb %%> "leInt"
-  ; remap <%% Z.ltb %%> "ltInt"
-  ; remap <%% sig %%> "sig_" (* remapping [sig] to the wrapper *)
-  ; remap <%% @proj1_sig %%> "(fun x -> x)" (* this is a safe, but ad-hoc optimisation*)
-  ; remap <%% Z %%> "int"
-  ; remap <%% nat %%> "key_hash" (* type of account addresses*)
-  ; remap <%% operation %%> "operation"
-  ; remap <%% @fst %%> "fst"
-  ; remap <%% @snd %%> "snd" ].
+  [ remap <%%% bool %%%> "bool"
+  ; remap <%%% list %%%> "list"
+  ; remap <%%% Amount %%%> "tez"
+  ; remap <%%% address_coq %%%> "address"
+  ; remap <%%% time_coq %%%> "timestamp"
+  ; remap <%%% option %%%> "option"
+  ; remap <%%% Z.add %%%> "addInt"
+  ; remap <%%% Z.sub %%%> "subInt"
+  ; remap <%%% Z.leb %%%> "leInt"
+  ; remap <%%% Z.ltb %%%> "ltInt"
+  ; remap <%%% sig %%%> "sig_" (* remapping [sig] to the wrapper *)
+  ; remap <%%% @proj1_sig %%%> "(fun x -> x)" (* this is a safe, but ad-hoc optimisation*)
+  ; remap <%%% Z %%%> "int"
+  ; remap <%%% nat %%%> "key_hash" (* type of account addresses*)
+  ; remap <%%% operation %%%> "operation"
+  ; remap <%%% @fst %%%> "fst"
+  ; remap <%%% @snd %%%> "snd" ].
 
 (** A translation table of constructors and some constants. The corresponding definitions will be extracted and renamed. *)
 Definition TT_rename : list (string * string):=
@@ -115,7 +115,7 @@ Definition TT_rename : list (string * string):=
   ; ("nil", "[]")
   ; ("true", "true")
   ; ("exist", "exist_") (* remapping [exist] to the wrapper *)
-  ; (string_of_kername <%% storage %%>, "storage")  (* we add [storage] so it is printed without the prefix *) ].
+  ; (string_of_kername <%%% storage %%%>, "storage")  (* we add [storage] so it is printed without the prefix *) ].
 
 Definition COUNTER_MODULE : LiquidityMod msg _ Z storage operation :=
   {| (* a name for the definition with the extracted code *)

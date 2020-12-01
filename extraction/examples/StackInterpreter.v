@@ -255,29 +255,29 @@ Definition print_finmap_type (prefix ty_key ty_val : string) :=
 (** A translation table for various constants we want to rename *)
 Definition TT_remap : list (kername * string) :=
   [   (* remapping types *)
-       remap <%% Z %%> "int"
-     ; remap <%% bool %%> "bool"
-     ; remap <%% unit %%> "unit"
-     ; remap <%% option %%> "option"
-     ; remap <%% Amount %%> "tez"
-     ; remap <%% address_coq %%> "address"
-     ; remap <%% time_coq %%> "timestamp"
-     ; remap <%% list %%> "list"
-     ; remap <%% string %%> "string"
-     ; remap <%% ext_map %%> (print_finmap_type PREFIX "string * int" "value")
-     ; remap <%% action %%> "operation"
+       remap <%%% Z %%%> "int"
+     ; remap <%%% bool %%%> "bool"
+     ; remap <%%% unit %%%> "unit"
+     ; remap <%%% option %%%> "option"
+     ; remap <%%% Amount %%%> "tez"
+     ; remap <%%% address_coq %%%> "address"
+     ; remap <%%% time_coq %%%> "timestamp"
+     ; remap <%%% list %%%> "list"
+     ; remap <%%% string %%%> "string"
+     ; remap <%%% ext_map %%%> (print_finmap_type PREFIX "string * int" "value")
+     ; remap <%%% action %%%> "operation"
      (* remapping operations *)
-     ; remap <%% Z.add %%> "addInt"
-     ; remap <%% Z.mul %%> "mulInt"
-     ; remap <%% Z.sub %%> "subInt"
-     ; remap <%% Z.eqb %%> "eqInt"
-     ; remap <%% Z.leb %%> "leInt"
-     ; remap <%% Z.ltb %%> "ltInt"
-     ; remap <%% @lookup %%> "Map.find"
-     ; remap <%% @fst %%> "fst"
-     ; remap <%% @snd %%> "snd"
-     ; remap <%% andb %%> "andb"
-     ; remap <%% one %%> "1"].
+     ; remap <%%% Z.add %%%> "addInt"
+     ; remap <%%% Z.mul %%%> "mulInt"
+     ; remap <%%% Z.sub %%%> "subInt"
+     ; remap <%%% Z.eqb %%%> "eqInt"
+     ; remap <%%% Z.leb %%%> "leInt"
+     ; remap <%%% Z.ltb %%%> "ltInt"
+     ; remap <%%% @lookup %%%> "Map.find"
+     ; remap <%%% @fst %%%> "fst"
+     ; remap <%%% @snd %%%> "snd"
+     ; remap <%%% andb %%%> "andb"
+     ; remap <%%% one %%%> "1"].
 
 Definition TT_rename : MyEnv.env string :=
      (* constructors *)
@@ -322,42 +322,42 @@ Redirect "examples/liquidity-extract/StackInterpreter.liq" Compute liquidity_int
 (* ------- CameLIGO extraction -------- *)
 From ConCert.Extraction Require Import CameLIGOPretty CameLIGOExtract.
 
-Definition receive_ (c : Chain) (ctx : SimpleCallCtx) (s : storage) (msg : option params):= 
+Definition receive_ (c : Chain) (ctx : SimpleCallCtx) (s : storage) (msg : option params):=
   (* prevent optimizations from deleting these arguments from receive_'s type signature *)
   let c_ := c in
   let ctx_ := ctx in
-  match msg with 
+  match msg with
   | Some msg => receive msg s
   | None => None
-  end.  
+  end.
 
 Definition TT_remap_ligo : list (kername * string) :=
   [   (* remapping types *)
-       remap <%% Z %%> "int"
-     ; remap <%% bool %%> "bool"
-     ; remap <%% unit %%> "unit"
-     ; remap <%% option %%> "option"
-     ; remap <%% Amount %%> "tez"
-     ; remap <%% address_coq %%> "address"
-     ; remap <%% time_coq %%> "timestamp"
-     ; remap <%% list %%> "list"
-     ; remap <%% string %%> "string"
-     ; remap <%% ext_map %%> (print_finmap_type PREFIX "string * int" "value")
-     ; remap <%% action %%> "operation"
+       remap <%%% Z %%%> "int"
+     ; remap <%%% bool %%%> "bool"
+     ; remap <%%% unit %%%> "unit"
+     ; remap <%%% option %%%> "option"
+     ; remap <%%% Amount %%%> "tez"
+     ; remap <%%% address_coq %%%> "address"
+     ; remap <%%% time_coq %%%> "timestamp"
+     ; remap <%%% list %%%> "list"
+     ; remap <%%% string %%%> "string"
+     ; remap <%%% ext_map %%%> (print_finmap_type PREFIX "string * int" "value")
+     ; remap <%%% action %%%> "operation"
      (* remapping operations *)
-     ; remap <%% Z.add %%> "addInt"
-     ; remap <%% Z.mul %%> "multInt"
-     ; remap <%% Z.sub %%> "subInt"
-     ; remap <%% Z.eqb %%> "eqInt"
-     ; remap <%% Z.leb %%> "leInt"
-     ; remap <%% Z.ltb %%> "ltInt"
-     ; remap <%% @lookup %%> "Map.find_opt"
-     ; remap <%% @fst %%> "fst"
-     ; remap <%% @snd %%> "snd"
-     ; remap <%% andb %%> "andb"
-     ; remap <%% one %%> "1"].
+     ; remap <%%% Z.add %%%> "addInt"
+     ; remap <%%% Z.mul %%%> "multInt"
+     ; remap <%%% Z.sub %%%> "subInt"
+     ; remap <%%% Z.eqb %%%> "eqInt"
+     ; remap <%%% Z.leb %%%> "leInt"
+     ; remap <%%% Z.ltb %%%> "ltInt"
+     ; remap <%%% @lookup %%%> "Map.find_opt"
+     ; remap <%%% @fst %%%> "fst"
+     ; remap <%%% @snd %%%> "snd"
+     ; remap <%%% andb %%%> "andb"
+     ; remap <%%% one %%%> "1"].
 
-Definition dummy_chain := 
+Definition dummy_chain :=
       "type chain = {
         chain_height     : nat;
         current_slot     : nat;

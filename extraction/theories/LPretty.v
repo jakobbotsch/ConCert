@@ -94,7 +94,7 @@ Section print_term.
     match hd with
     | TInd ind =>
       (* a special case of products - infix *)
-      if eq_kername <%% prod %%> ind.(inductive_mind) then
+      if eq_inductive <%% prod %%> ind then
         parens false (concat " * " args)
       else parens false (print_uncurried "" args ++ " " ++ go hd)
     | _ => parens false (print_uncurried "" args ++ " " ++ go hd)
@@ -111,7 +111,7 @@ Section print_term.
   end.
 
   Compute print_box_type "" []
-          (TApp (TApp (TInd (mkInd <%% prod %%> 0)) (TVar 0)) (TVar 1)).
+          (TApp (TApp (TInd <%% prod %%>) (TVar 0)) (TVar 1)).
 
   Compute print_box_type "" []
           (TApp (TApp (TApp (TApp (TInd (mkInd (MPfile [], "list") 0)) (TVar 0)) (TVar 1)) (TVar 2))(TVar 3)).
@@ -127,7 +127,7 @@ Section print_term.
 
   Compute print_ctor "" []
           ("blah",[TInd (mkInd (MPfile [], "nat") 0);
-                  (TApp (TApp (TInd (mkInd <%% prod %%> 0)) (TVar 0)) (TVar 1))]).
+                  (TApp (TApp (TInd <%% prod %%>) (TVar 0)) (TVar 1))]).
 
   Definition print_inductive (prefix : string) (TT : env string)
              (oib : ExAst.one_inductive_body) :=
@@ -151,7 +151,7 @@ Section print_term.
     from_option (look TT nm) (prefix ++ ind.(inductive_mind).2)
   | Ast.tApp (Ast.tInd ind _) [t1;t2] =>
     (* a special case of products - infix *)
-    if eq_kername <%% prod %%> ind.(inductive_mind) then
+    if eq_inductive <%% prod %%> ind then
       parens false (print_liq_type prefix TT t1 ++ " * " ++ print_liq_type prefix TT t2)
       else error
   | Ast.tApp (Ast.tInd ind i) args =>
@@ -274,14 +274,13 @@ Section print_term.
     end.
 
   Definition is_pair_constr (ind : inductive) :=
-    eq_kername ind.(inductive_mind) <%% prod %%>.
+    eq_inductive ind <%% prod %%>.
 
   Definition print_pair (f : term -> string) (t1 : term) (t2 : term) :=
     parens false ((f t1) ++ " ," ++ (f t2)).
 
   Definition is_list_cons (ind : inductive) (ctor_num : nat):=
-    andb (eq_kername ind.(inductive_mind) <%% list %%>)
-         (Nat.eqb ctor_num 1).
+    Reflect.eqb (ind, ctor_num) <%% @cons %%>.
 
   Definition print_list_cons (f : term -> string) (t1 : term) (t2 : term) :=
     (f t1) ++ " :: " ++ (f t2).
@@ -407,7 +406,7 @@ Section print_term.
     from_option (look TT nm) ((capitalize prefix) ++ nm)
   | tCase (mkInd mind i as ind, nparam) t brs =>
     (* [if-then-else] is a special case *)
-    if eq_kername mind <%% bool %%> then
+    if eq_inductive ind <%% bool %%> then
       match brs with
       | [b1;b2] =>
         parens top
@@ -419,7 +418,7 @@ Section print_term.
       end
     else
       (* [list] is a special case *)
-      if eq_kername mind <%% list %%> then
+      if eq_inductive ind <%% list %%> then
         match brs with
         | [b1;b2] =>
           let nil_case := "[] -> " ++ print_term prefix FT TT Γ false false b1.2 in

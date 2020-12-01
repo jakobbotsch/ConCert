@@ -125,10 +125,10 @@ Section CounterExtraction.
   (** A translation table for definitions we want to remap. The corresponding top-level definitions will be *ignored* *)
   Definition TT_remap_counter : list (kername * string) :=
     [
-      remap <%% Amount %%> "tez"
-    ; remap <%% address_coq %%> "address"
-    ; remap <%% time_coq %%> "timestamp"
-    ; remap <%% nat %%> "address"
+      remap <%%% Amount %%%> "tez"
+    ; remap <%%% address_coq %%%> "address"
+    ; remap <%%% time_coq %%%> "timestamp"
+    ; remap <%%% nat %%%> "address"
     ].
 
   (** A translation table of constructors and some constants. The corresponding definitions will be extracted and renamed. *)
@@ -243,17 +243,17 @@ Section CrowdfundingExtraction.
   Definition TT_remap_crowdfunding : list (kername * string) :=
 
   [  (* types *)
-    remap <%% address_coq %%> "address"
-  ; remap <%% time_coq %%> "timestamp"
-  ; remap <%% SimpleActionBody_coq %%> "operation"
-  ; remap <%% Maps.addr_map_coq %%> "(address,tez) map"
+    remap <%%% address_coq %%%> "address"
+  ; remap <%%% time_coq %%%> "timestamp"
+  ; remap <%%% SimpleActionBody_coq %%%> "operation"
+  ; remap <%%% Maps.addr_map_coq %%%> "(address,tez) map"
 
   (* operations *)
-  ; remap <%% ltb_time %%> "ltb_time"
-  ; remap <%% leb_time %%> "leb_time"
-  ; remap <%% eqb_addr %%> "eq_addr"
-  ; remap <%% Maps.add_map %%> "Map.add"
-  ; remap <%% lookup_map' %%> "Map.find_opt"
+  ; remap <%%% ltb_time %%%> "ltb_time"
+  ; remap <%%% leb_time %%%> "leb_time"
+  ; remap <%%% eqb_addr %%%> "eq_addr"
+  ; remap <%%% Maps.add_map %%%> "Map.add"
+  ; remap <%%% lookup_map' %%%> "Map.find_opt"
   ].
 
   Definition TT_rename_crowdfunding :=
@@ -352,23 +352,23 @@ Section EIP20TokenExtraction.
 
   Definition TT_remap_eip20token : list (kername * string) :=
   [
-    remap <%% @ContractCallContext %%> "(adress * (address * int))"
-  ; remap <%% eqb_addr %%> "eq_addr"
-  ; remap <%% @Extras.with_default %%> "with_default_N"
-  ; remap <%% @Monads.bind %%> "bind_option_state"
-  ; remap <%% Monads.Monad_option %%> "()"
+    remap <%%% @ContractCallContext %%%> "(adress * (address * int))"
+  ; remap <%%% eqb_addr %%%> "eq_addr"
+  ; remap <%%% @Extras.with_default %%%> "with_default_N"
+  ; remap <%%% @Monads.bind %%%> "bind_option_state"
+  ; remap <%%% Monads.Monad_option %%%> "()"
 
-  ; remap <%% @stdpp.base.insert %%> "Map.add"
-  ; remap <%% @stdpp.base.lookup %%> "Map.find_opt"
-  ; remap <%% @stdpp.base.empty %%> "Map.empty"
-  ; remap <%% @stdpp.base.partial_alter %%> "partial_alter_addr_nat"
-  ; remap <%% @gmap.gmap_partial_alter %%> ""
-  ; remap <%% @fin_maps.map_insert %%> ""
-  ; remap <%% @gmap.gmap_empty %%> ""
-  ; remap <%% @gmap.gmap_lookup %%> ""
-  ; remap <%% @address_eqdec %%> ""
-  ; remap <%% @address_countable %%> ""
-  ; remap <%% option_map %%> "option_map_state_acts"
+  ; remap <%%% @stdpp.base.insert %%%> "Map.add"
+  ; remap <%%% @stdpp.base.lookup %%%> "Map.find_opt"
+  ; remap <%%% @stdpp.base.empty %%%> "Map.empty"
+  ; remap <%%% @stdpp.base.partial_alter %%%> "partial_alter_addr_nat"
+  ; remap <%%% @gmap.gmap_partial_alter %%%> ""
+  ; remap <%%% @fin_maps.map_insert %%%> ""
+  ; remap <%%% @gmap.gmap_empty %%%> ""
+  ; remap <%%% @gmap.gmap_lookup %%%> ""
+  ; remap <%%% @address_eqdec %%%> ""
+  ; remap <%%% @address_countable %%%> ""
+  ; remap <%%% option_map %%%> "option_map_state_acts"
   ].
 
   Definition TT_rename_eip20token :=

@@ -47,8 +47,6 @@ Import MonadNotation.
 Local Open Scope list.
 Local Open Scope string.
 
-Local Definition indent_size := 2.
-
 Section FixEnv.
 Context (Σ : Ex.global_env).
 Context (remaps : remaps).
@@ -57,6 +55,7 @@ Class RustPrintConfig :=
   { term_box_symbol : string;
     type_box_symbol : string;
     any_type_symbol : string;
+    indent_size : nat;
     print_full_names : bool (* use fully-qualified names as identifiers to avoid name clashes *)}.
 
 Context `{RustPrintConfig}.
@@ -443,7 +442,29 @@ Definition needs_block (t : term) : bool :=
   | _ => false
   end.
 
+Definition eq_ctor (p p' : inductive * nat) := eq_inductive p.1 p'.1 && (p.2 =? p'.2)%nat.
+
+Fixpoint unquote_positive (t : term) {struct t} : option positive :=
+  match t with
+  | tApp (tConstruct ind c) arg =>
+    if eq_ctor (ind, c) <%% xO %%> then
+      p <- unquote_positive arg;; ret (xO p)
+    else if eq_ctor (ind, c) <%% xI %%> then
+      p <- unquote_positive arg;; ret (xI p)
+    else
+      None
+  | tConstruct ind c =>
+    if eq_ctor (ind, c) <%% xH %%> then
+      Some 1
+    else
+      None
+  | _ => None
+  end%positive.
+
 Fixpoint print_term (Γ : list ident) (t : term) {struct t} : PrettyPrinter unit :=
+  match unquote_positive t with
+  | Some p => append (string_of_positive p)
+  | None =>
   match t with
   | tBox => append term_box_symbol
   | tRel n =>
@@ -589,6 +610,7 @@ Fixpoint print_term (Γ : list ident) (t : term) {struct t} : PrettyPrinter unit
 
   | tCoFix _ _ => printer_fail "Cannot handle tCoFix yet"
 
+  end
   end.
 
 Definition print_constant
@@ -1010,13 +1032,8 @@ Definition extract_rust_within_coq
                          Inlining.transform should_inline; (* before TopLevelFixes *)
                          TopLevelFixes.transform] |} |}.
 
-Instance RustConfig : RustPrintConfig :=
-  {| term_box_symbol := "()";
-     type_box_symbol := "()";
-     any_type_symbol := "()";
-     print_full_names := true |}.
-
 Definition extract_lines
+           {cfg : RustPrintConfig}
            (p : T.program)
            (remaps : remaps)
            (should_inline : kername -> bool) : result (list string) string :=
@@ -1046,6 +1063,6 @@ Definition extract_lines
   '(_, s) <- timed "Printing" (fun _ => finish_print_lines p);;
   ret s.
 
-Definition extract p remaps should_inline :=
+Definition extract {cfg : RustPrintConfig} p remaps should_inline :=
   lines <- extract_lines p remaps should_inline;;
   ret (concat nl lines).

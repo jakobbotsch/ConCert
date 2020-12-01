@@ -24,6 +24,7 @@ Instance RustConfig : RustPrintConfig :=
   {| term_box_symbol := "()";
      type_box_symbol := "()";
      any_type_symbol := "()";
+     indent_size := 2;
      print_full_names := false |}.
 
 Definition extract (p : T.program) : result string string :=
